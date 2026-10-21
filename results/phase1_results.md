@@ -253,3 +253,44 @@ so the selection cost falls from 0.121 to 0.021. With instance-specific reports,
 signals whose reports differ in wording but not diagnosis. Coarse text removes those distinctions, so
 instance alignment and class-level usefulness converge. The margin/Procrustes/CKA anti-correlation
 persists within each condition (most models still trade margin for zero-shot), but its cost shrinks.
+
+## Within-group information loss (lead I; 13 models at tau 0.2 per text condition; `src/info_loss.py`)
+Groups = test ECGs sharing an identical report (original) or a k-means text cluster. Group spread =
+mean within-group cosine distance / mean random-pair distance (higher = same-text ECGs less tightly
+grouped relative to the whole space). wg_* = probe scores centered within groups (diagnosis: only on
+groups whose members disagree on a superclass). Age and sex are absent from the reports.
+
+| Text | Model | Zero-shot | Group spread | wg diagnosis AUROC | Age R² | wg age R² | Sex AUROC | wg sex AUROC |
+|---|---|---|---|---|---|---|---|---|
+| original | frozen encoder | - | 0.755 | 0.680 | 0.409 | 0.206 | 0.781 | 0.792 |
+| original | InfoNCE | 0.686 | 0.868 | 0.679 | 0.406 | 0.195 | 0.769 | 0.775 |
+| original | best (soft 1/0.2) | 0.807 | 0.946 | 0.678 | 0.387 | 0.174 | 0.760 | 0.766 |
+| k = 500 | InfoNCE | 0.733 | 0.885 | 0.674 | 0.405 | 0.220 | 0.773 | 0.746 |
+| k = 500 | best (soft 1/0.2) | 0.805 | 0.946 | 0.672 | 0.385 | 0.201 | 0.760 | 0.731 |
+| k = 100 | InfoNCE | 0.751 | 0.900 | 0.668 | 0.405 | 0.255 | 0.773 | 0.751 |
+| k = 100 | best (soft 1/0.2) | 0.803 | 0.947 | 0.665 | 0.384 | 0.234 | 0.759 | 0.739 |
+| k = 20 | InfoNCE | 0.789 | 0.945 | 0.682 | 0.405 | 0.279 | 0.770 | 0.753 |
+| k = 20 | best (label 1) | 0.810 | 0.965 | 0.683 | 0.393 | 0.269 | 0.760 | 0.743 |
+
+Spearman across the 13 models, each measure vs zero-shot AUROC:
+
+| Text | Group spread | wg diagnosis | Age R² | wg age R² | Sex AUROC | wg sex AUROC |
+|---|---|---|---|---|---|---|
+| original | +0.90 | -0.24 | -0.84 | -0.69 | -0.19 | -0.75 |
+| k = 500 | +0.83 | -0.74 | -0.84 | -0.86 | -0.84 | -0.88 |
+| k = 100 | +0.91 | -0.53 | -0.95 | -0.92 | -0.93 | -0.94 |
+| k = 20 | +0.82 | +0.51 | -0.80 | -0.77 | -0.73 | -0.75 |
+
+Margin vs zero-shot (Spearman): raw, and rank-partial given group spread / age R² / wg sex AUROC:
+original -0.91 / -0.46 / -0.72 / -0.79; k500 -0.91 / -0.77 / -0.67 / -0.49; k100 -0.95 / -0.65 / -0.21 / -0.53;
+k20 -0.75 / +0.41 / +0.11 / -0.12. Group spread vs margin: rho -0.97 to -0.99 in every condition (nearly
+collinear, so the partials are poorly conditioned).
+
+**Reading:** in every condition, models with better zero-shot AUROC keep slightly less of the
+information the text doesn't carry (age and sex, globally and within groups; rho -0.7 to -0.95), and
+their same-text groups are less tightly separated. The absolute changes are small (age R² 0.406 ->
+0.387, sex AUROC 0.769 -> 0.760, within-group age R² 0.195 -> 0.174), and within-group diagnosis is
+unchanged (0.665-0.683 everywhere). So the high-alignment models are not "more informative" in any
+diagnostic sense; they retain a little more text-irrelevant signal detail and finer text-specific
+grouping, which the alignment metrics reward and class-level use does not need. n = 13 per
+condition; no CIs on the preservation measures yet.
