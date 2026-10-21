@@ -55,7 +55,16 @@ def pair_loss(a, b, T, tau):
 
 
 def batch_targets(kind, idx, aux, device):
-    """Target matrix for text pairs in this batch."""
+    """Target matrix for text pairs in this batch, optionally mixed with the identity:
+    T = (1 - mix) * I + mix * T_kind  (aux["mix"], default 1.0)."""
+    T = _targets(kind, idx, aux, device)
+    m = aux.get("mix", 1.0)
+    if kind != "infonce" and m < 1.0:
+        T = (1.0 - m) * torch.eye(len(idx), device=device) + m * T
+    return T
+
+
+def _targets(kind, idx, aux, device):
     B = len(idx)
     if kind == "infonce":
         return torch.eye(B, device=device)
