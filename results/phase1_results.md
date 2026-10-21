@@ -159,7 +159,7 @@ column for comparisons with the paper.
 | Arm | Extra params | TS–TXT margin (s0 / s1 / s2) | TS–IMG R@1 (s0 / s1 / s2) | TS zero-shot AUROC (s0 / s1 / s2) |
 |---|---|---|---|---|
 | head | 0 | 0.371 / 0.371 / 0.370 | 62.2 / 62.3 / 62.2 % | see results_adapt_head_leadI.json |
-| deep_head | 294,335 | 0.368 / ~0.369 / 0.367 | 61.2 / 61.7 / 61.8 % | see JSON |
+| deep_head | 294,335 | 0.368 / ~0.369 / 0.367 | 61.2 / 61.9 / 61.8 % | see JSON |
 | **lora** | 294,912 | **0.388 / 0.388 / 0.388** | **65.9 / 63.8 / 65.4 %** | 0.684 / 0.680 / 0.684 |
 
 **Confirmed over 3 seeds:** at a matched budget, LoRA inside MOMENT raises TS–TXT margin by +0.017
