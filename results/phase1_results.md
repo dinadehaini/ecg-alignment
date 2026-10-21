@@ -155,7 +155,14 @@ column for comparisons with the paper.
 5. **Duplicate-aware retrieval roughly doubles R@1** (≈1.1% → ≈2.5%), quantifying how much of the
    paper-rule TS→TXT retrieval failure is ties among identical reports.
 
-## LoRA seeds (in progress)
-Seed 1: TS–TXT margin 0.388, TS–IMG R@1 63.8%, zero-shot AUROC 0.680. That replicates seed 0
-(0.388 / 65.9% / 0.684). Head-arm seeds 0–2: margin 0.371 / 0.371 / 0.370; deep-head arm
-0.368 / ~0.369 / 0.367. Seed 2 is still running.
+## Matched-budget pilot: all 3 seeds (lead I; Colab T4)
+| Arm | Extra params | TS–TXT margin (s0 / s1 / s2) | TS–IMG R@1 (s0 / s1 / s2) | TS zero-shot AUROC (s0 / s1 / s2) |
+|---|---|---|---|---|
+| head | 0 | 0.371 / 0.371 / 0.370 | 62.2 / 62.3 / 62.2 % | see results_adapt_head_leadI.json |
+| deep_head | 294,335 | 0.368 / ~0.369 / 0.367 | 61.2 / 61.7 / 61.8 % | see JSON |
+| **lora** | 294,912 | **0.388 / 0.388 / 0.388** | **65.9 / 63.8 / 65.4 %** | 0.684 / 0.680 / 0.684 |
+
+**Confirmed over 3 seeds:** at a matched budget, LoRA inside MOMENT raises TS–TXT margin by +0.017
+(head-arm seed spread ≤ 0.001) and TS–IMG R@1 by ~+3 points. The deeper head gives nothing. Zero-shot
+diagnosis stays flat (0.683 vs. 0.684–0.687). Adapting the encoder improves geometric alignment, not
+diagnostic content. That's the same dissociation as in Steps A + B.
