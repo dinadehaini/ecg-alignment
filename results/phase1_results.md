@@ -216,3 +216,40 @@ of zero-shot (text-queried) diagnostic discrimination, roughly 10× the patient-
 The cost is in text-based readout, not in the information the embedding carries. Duplicate-aware
 retrieval, the one metric that doesn't penalize grouping reports with identical text, largely avoids
 the cost.
+
+## Text-coarsening mechanism test (lead I; 13 models at tau 0.2 per condition; Colab T4)
+`src/sweep.py --small --coarsen K`, `src/compare_coarsen.py`. Same ECGs; each report embedding is
+replaced by its k-means centroid (fit on train), so the text gets less specific while the examples stay
+fixed. The original row is the tau-0.2 subset of the 63-model sweep.
+
+Spearman, alignment (+ = better aligned) vs test zero-shot AUROC:
+
+| Text | Unique test texts | margin | Procrustes (sym) | CKA | mKNN@5 | R@1 exact | R@1 dup-aware |
+|---|---|---|---|---|---|---|---|
+| original | 2,225 | -0.91 | -0.92 | -0.94 | -0.79 | -0.83 | -0.10 |
+| k = 500 | 466 | -0.91 | -0.91 | -0.94 | -0.45 | -0.60 | +0.38 |
+| k = 100 | 100 | -0.95 | -0.95 | -0.94 | -0.27 | -0.76 | +0.29 |
+| k = 20 | 20 | -0.75 | -0.75 | -0.60 | +0.47 | -0.74 | -0.83 |
+
+Selection cost (test zero-shot AUROC lost when picking by the validation metric vs. by validation zero-shot AUROC):
+
+| Text | margin | Procrustes | CKA | mKNN | R@1 exact | R@1 dup-aware |
+|---|---|---|---|---|---|---|
+| original | 0.121 | 0.121 | 0.121 | 0.123 | 0.106 | 0.000 |
+| k = 500 | 0.072 | 0.072 | 0.072 | 0.070 | 0.056 | 0.000 |
+| k = 100 | 0.052 | 0.052 | 0.052 | 0.043 | 0.040 | 0.003 |
+| k = 20 | 0.021 | 0.021 | 0.021 | 0.000 | 0.016 | 0.014 |
+
+| Text | InfoNCE zero-shot [95% CI] | Best zero-shot [95% CI] | Best model | Probe range | InfoNCE margin |
+|---|---|---|---|---|---|
+| original | 0.686 [0.676, 0.697] | 0.807 [0.798, 0.816] | soft mix 1, st 0.2 | 0.828-0.833 | 0.386 |
+| k = 500 | 0.733 [0.724, 0.745] | 0.805 [0.796, 0.815] | soft mix 1, st 0.2 | 0.827-0.832 | 0.319 |
+| k = 100 | 0.751 [0.740, 0.762] | 0.803 [0.794, 0.812] | soft mix 1, st 0.2 | 0.827-0.832 | 0.273 |
+| k = 20 | 0.789 [0.779, 0.799] | 0.810 [0.802, 0.818] | label mix 1 | 0.827-0.831 | 0.195 |
+
+**Reading:** the reversal is largest with the original, most specific text, and shrinks as the text
+gets coarser. Plain InfoNCE improves steadily (0.686 -> 0.789) while the best model stays at ~0.81,
+so the selection cost falls from 0.121 to 0.021. With instance-specific reports, InfoNCE pushes apart
+signals whose reports differ in wording but not diagnosis. Coarse text removes those distinctions, so
+instance alignment and class-level usefulness converge. The margin/Procrustes/CKA anti-correlation
+persists within each condition (most models still trade margin for zero-shot), but its cost shrinks.
