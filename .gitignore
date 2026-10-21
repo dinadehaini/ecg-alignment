@@ -1,0 +1,11 @@
+# data and caches (PTB-XL is downloaded by src/download_ptbxl.py; embeddings are large)
+data/
+results/emb/
+*.npy
+*.pt
+__pycache__/
+.ipynb_checkpoints/
+# private planning / outreach drafts (not part of the public code)
+PHASE2_PLAN.md
+phase1_summary.md
+CRITIQUES.md

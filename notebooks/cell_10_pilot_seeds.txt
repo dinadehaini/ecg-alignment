@@ -1,0 +1,9 @@
+# 10. Pilot: seeds 0, 1, 2 for all three arms (seed 0 reloads from its finished checkpoints). ~6 h on a T4.
+from google.colab import drive
+drive.mount('/content/drive')
+# change the path below to where this folder lives in your Drive
+%cd /content/drive/MyDrive/rose-yu-ecg
+!pip install -q -r requirements-colab.txt
+!pip install -q momentfm==0.1.4 --no-deps
+!test -f /content/ptbxl/ptbxl_database.csv || python src/download_ptbxl.py --out /content/ptbxl --only 0
+!python src/adapt.py --emb results/emb --ptbxl /content/ptbxl --arm head deep_head lora --seeds 0 1 2 --micro 128 2>&1 | tee -a results/adapt_leadI_seeds.log

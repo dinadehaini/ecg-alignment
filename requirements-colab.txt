@@ -1,0 +1,10 @@
+# On Colab, torch/numpy/pandas/matplotlib/scikit-learn come preinstalled.
+# Versions below are the ones the CPU smoke test passed with (2026-10-19).
+# momentfm is installed separately with --no-deps (it pins an old transformers it doesn't need).
+transformers==4.57.6
+accelerate
+chronos-forecasting==2.3.2
+wfdb==4.3.1
+einops
+sentencepiece
+peft==0.17.1
