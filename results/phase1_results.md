@@ -166,3 +166,53 @@ column for comparisons with the paper.
 (head-arm seed spread ≤ 0.001) and TS–IMG R@1 by ~+3 points. The deeper head gives nothing. Zero-shot
 diagnosis stays flat (0.683 vs. 0.684–0.687). Adapting the encoder improves geometric alignment, not
 diagnostic content. That's the same dissociation as in Steps A + B.
+
+## Sweep: 63 head-only models (lead I; Colab T4; `src/sweep.py`, `src/analyze_sweep.py`)
+Grid: objective family {infonce, soft, label} × mix {.25,.5,.75,1} × soft-τ {.02,.05,.1,.2} × training τ
+{0.07, 0.2, 0.5}. Each model has test alignment metrics, validation alignment metrics, zero-shot AUROC
+(text prototypes), a linear-probe AUROC on the projected TS embedding, and patient-level 95% bootstrap
+CIs (200 resamples). Full tables are in `results/sweep_analysis_leadI.md` on Drive.
+
+**1. Probe AUROC is flat; zero-shot AUROC isn't.** The probe on projected embeddings is 0.823–0.833 for
+every model (frozen-encoder reference 0.829; CI half-width ≈ 0.008). Zero-shot ranges from 0.672 to
+0.807. The objectives change how *readable the diagnosis is through text*, not the diagnostic
+information in the embedding.
+
+**2. Alignment metrics anti-correlate with zero-shot AUROC.** Spearman ρ across models, with metrics
+sign-flipped so + means "better alignment goes with better zero-shot":
+
+| Metric | All 63 | Within τ = 0.07 | Within τ = 0.2 | Within τ = 0.5 |
+|---|---|---|---|---|
+| Cosine margin | −0.55 | −0.86 | −0.94 | −0.79 |
+| Procrustes (paper) | −0.62 | −0.86 | −0.93 | −0.79 |
+| Procrustes (symmetric) | −0.64 | −0.87 | −0.93 | −0.77 |
+| RBF-CKA | −0.63 | −0.86 | −0.94 | −0.72 |
+| Mutual kNN@5 | −0.68 | −0.84 | −0.73 | −0.17 |
+| R@1, exact (paper rule) | −0.26 | −0.26 | −0.77 | −0.10 |
+| **R@1, duplicate-aware** | **+0.19** | **+0.57** | −0.38 | +0.16 |
+
+Exceptions exist (e.g. soft, mix 0.25, soft-τ 0.05, τ 0.07: margin 0.220 and zero-shot 0.672, below the
+0.695 baseline). The negative trend still holds within each objective family (label family: ρ −0.73
+to −0.83).
+
+**3. Model-selection cost.** Pick the model with the best *validation* metric and report its *test*
+zero-shot AUROC. The prespecified criterion (validation zero-shot AUROC) picks soft, mix 1.0,
+soft-τ 0.2, τ 0.2: test 0.807 [0.798, 0.816].
+
+| Selector (validation) | Model picked | Test zero-shot AUROC | Loss vs. criterion |
+|---|---|---|---|
+| Cosine margin / Procrustes (both) | infonce, τ 0.5 (the paper's objective) | 0.696 [0.687, 0.707] | **−0.111** |
+| RBF-CKA | label, mix 0.25, τ 0.5 | 0.706 | −0.101 |
+| Mutual kNN@5 | soft, mix 1.0, soft-τ 0.02, τ 0.2 | 0.685 | −0.123 |
+| R@1, exact | label, mix 0.25, τ 0.07 | 0.712 | −0.095 |
+| **R@1, duplicate-aware** | soft, mix 1.0, soft-τ 0.1, τ 0.07 | **0.802** | **−0.005** |
+
+Within each training temperature the picture is the same: the standard metrics pick the infonce
+baseline (loss 0.107–0.121), and duplicate-aware R@1 picks the best or near-best model (loss
+0.000–0.041). Probe AUROC loss is ≤ 0.006 for every selector, which fits finding 1.
+
+**Reading:** on PTB-XL, choosing a model by the paper's alignment metrics would cost about 0.11 AUROC
+of zero-shot (text-queried) diagnostic discrimination, roughly 10× the patient-level CI half-width.
+The cost is in text-based readout, not in the information the embedding carries. Duplicate-aware
+retrieval, the one metric that doesn't penalize grouping reports with identical text, largely avoids
+the cost.
