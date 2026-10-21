@@ -92,6 +92,31 @@ def patient_bootstrap(pids, fns, n_boot=N_BOOT, seed=0):
     return {k: (float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))) for k, v in out.items()}
 
 
+def small_grid():
+    """13 models at the paper's training temperature (for the text-coarsening mechanism test)."""
+    tau = 0.2
+    g = [("infonce", 0.0, None, tau)]
+    g += [("soft", m, st, tau) for m in (0.5, 1.0) for st in (0.02, 0.05, 0.1, 0.2)]
+    g += [("label", m, None, tau) for m in (0.25, 0.5, 0.75, 1.0)]
+    return g
+
+
+def coarsen_text(data, k, seed=0):
+    """Mechanism test: replace every report embedding by its k-means centroid (fit on train reports).
+
+    Coarsens the text's meaning by the text model's own similarity, with no diagnostic labels.
+    Returns the cluster id per split (used as the duplicate group)."""
+    from sklearn.cluster import KMeans
+    km = KMeans(n_clusters=k, n_init=3, random_state=seed).fit(data["train"]["txt"].numpy())
+    C = torch.as_tensor(km.cluster_centers_, dtype=torch.float32)
+    ids = {}
+    for s in data:
+        lab = km.predict(data[s]["txt"].numpy())
+        data[s]["txt"] = C[lab].clone()
+        ids[s] = lab
+    return ids
+
+
 def grid(quick=False):
     mixes = [0.0, 0.25, 0.5, 0.75, 1.0]
     taus = [0.07, 0.2, 0.5]
@@ -118,6 +143,8 @@ def main():
     ap.add_argument("--bs", type=int, default=256)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--quick", action="store_true", help="tiny grid (smoke test)")
+    ap.add_argument("--small", action="store_true", help="13-model grid at tau 0.2 (mechanism test)")
+    ap.add_argument("--coarsen", type=int, default=0, help="k-means text coarsening to k groups")
     ap.add_argument("--allow-cpu", action="store_true")
     a = ap.parse_args()
     if torch.cuda.is_available():
@@ -132,15 +159,19 @@ def main():
     split = pd.read_csv(emb / "split.csv", index_col=0)
     data = load_emb(emb, CONFIG_A, a.lead)
     sc = superclasses(a.ptbxl)
+    if a.limit:
+        for s in ("train", "val", "test"):
+            data[s] = {m: v[:a.limit] for m, v in data[s].items()}
+    cids = coarsen_text(data, a.coarsen) if a.coarsen else None
     aux = {}
     for s in ("train", "val", "test"):
         rows = split[split.split == s]
         if a.limit:
             rows = rows.head(a.limit)
-            data[s] = {m: v[:a.limit] for m, v in data[s].items()}
         sets = sc.loc[rows.index].tolist()
         lab = pd.Series([",".join(sorted(x)) for x in sets]).astype("category").cat.codes.values.copy()
-        aux[s] = {"text_group": torch.as_tensor(text_groups(rows.report.tolist())),
+        tg = torch.as_tensor(cids[s]) if cids is not None else torch.as_tensor(text_groups(rows.report.tolist()))
+        aux[s] = {"text_group": tg,
                   "label_group": torch.as_tensor(lab),
                   "txt_raw_n": F.normalize(data[s]["txt"], dim=1).to(device), "sets": sets}
     bs = min(a.bs, len(data["train"]["ts"]))
@@ -163,7 +194,9 @@ def main():
                                            data["test"]["ts"].numpy()[keep], device))
     print(f"frozen-encoder probe AUROC (reference): {ref:.3f}", flush=True)
 
-    out_csv = emb / f"sweep2_lead{a.lead}{'_quick' if a.quick or a.limit else ''}.csv"
+    tag = (f"_k{a.coarsen}" if a.coarsen else "") + ("_small" if a.small else "") +           ("_quick" if a.quick or a.limit else "")
+    out_csv = emb / f"sweep2_lead{a.lead}{tag}.csv"
+    print(f"unique test texts: {len(np.unique(gt))}", flush=True)
     done = set()
     rows_out = []
     if out_csv.exists():  # resume
@@ -171,7 +204,7 @@ def main():
         rows_out = prev.to_dict("records")
         done = {(r["kind"], r["mix"], r["soft_tau"], r["tau"]) for r in rows_out}
 
-    g = grid(a.quick)
+    g = small_grid() if a.small else grid(a.quick)
     print(f"{len(g)} models in the grid, {len(done)} already done", flush=True)
     for kind, mix, st, tau in g:
         key = (kind, mix, st if st is not None else -1.0, tau)
