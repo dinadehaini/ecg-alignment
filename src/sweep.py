@@ -40,7 +40,56 @@ from train_heads_v2 import CONFIG_A, embed_all, train  # noqa: E402
 METRICS = ["cos_margin", "procrustes_paper", "procrustes_sym", "cka_rbf", "mutual_knn@5",
            "R@1_exact", "R@10_exact", "R@1_dupaware", "R@10_dupaware",
            "dedup_cos_margin", "dedup_procrustes_sym", "dedup_cka_rbf", "dedup_R@1"]
-USEFUL = ["ts_zeroshot_auroc", "ts2txt_label_p@10"]
+USEFUL = ["ts_zeroshot_auroc", "ts2txt_label_p@10", "ts_probe_auroc"]
+CLASSES = ["NORM", "MI", "STTC", "CD", "HYP"]
+N_BOOT = 200
+
+
+def zs_scores(q, txt_train, sets_train):
+    """Zero-shot scores (n, 5): cosine to the mean projected embedding of single-class train reports."""
+    P = []
+    for c in CLASSES:
+        m = np.array([s == frozenset([c]) for s in sets_train])
+        p = txt_train[m].mean(0) if m.any() else np.zeros(txt_train.shape[1])
+        P.append(p / max(np.linalg.norm(p), 1e-12))
+    return q @ np.stack(P).T
+
+
+def macro_auroc(y, scores):
+    from sklearn.metrics import roc_auc_score
+    vals = [roc_auc_score(y[:, j], scores[:, j]) for j in range(y.shape[1]) if len(set(y[:, j])) == 2]
+    return float(np.mean(vals)) if vals else float("nan")
+
+
+def probe_scores(Xtr, ytr, Xte, device, steps=300, wd=1e-3):
+    """Multi-label logistic-regression probe (one linear layer, BCE), full-batch Adam, standardized inputs."""
+    Xtr_t = torch.as_tensor(Xtr, dtype=torch.float32, device=device)
+    Xte_t = torch.as_tensor(Xte, dtype=torch.float32, device=device)
+    mu, sd = Xtr_t.mean(0, keepdim=True), Xtr_t.std(0, keepdim=True).clamp(min=1e-6)
+    Xtr_t, Xte_t = (Xtr_t - mu) / sd, (Xte_t - mu) / sd
+    y = torch.as_tensor(ytr, dtype=torch.float32, device=device)
+    torch.manual_seed(0)
+    lin = torch.nn.Linear(Xtr_t.shape[1], y.shape[1]).to(device)
+    opt = torch.optim.Adam(lin.parameters(), lr=1e-2, weight_decay=wd)
+    for _ in range(steps):
+        opt.zero_grad()
+        F.binary_cross_entropy_with_logits(lin(Xtr_t), y).backward()
+        opt.step()
+    with torch.no_grad():
+        return lin(Xte_t).cpu().numpy()
+
+
+def patient_bootstrap(pids, fns, n_boot=N_BOOT, seed=0):
+    """Percentile CIs, resampling *patients* with replacement. fns: name -> f(index array) -> float."""
+    rng = np.random.default_rng(seed)
+    uniq = np.unique(pids)
+    rows_of = {p: np.flatnonzero(pids == p) for p in uniq}
+    out = {k: [] for k in fns}
+    for _ in range(n_boot):
+        idx = np.concatenate([rows_of[p] for p in rng.choice(uniq, size=len(uniq), replace=True)])
+        for k, f in fns.items():
+            out[k].append(f(idx))
+    return {k: (float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))) for k, v in out.items()}
 
 
 def grid(quick=False):
@@ -96,11 +145,25 @@ def main():
                   "txt_raw_n": F.normalize(data[s]["txt"], dim=1).to(device), "sets": sets}
     bs = min(a.bs, len(data["train"]["ts"]))
     gt = aux["test"]["text_group"].numpy()
+    gv = aux["val"]["text_group"].numpy()
     keep = np.array([len(x) > 0 for x in aux["test"]["sets"]])
+    keep_v = np.array([len(x) > 0 for x in aux["val"]["sets"]])
+    keep_tr = np.array([len(x) > 0 for x in aux["train"]["sets"]])
     y_test = multihot(aux["test"]["sets"])[keep]
+    y_val = multihot(aux["val"]["sets"])[keep_v]
+    y_tr = multihot(aux["train"]["sets"])[keep_tr]
     sets_keep = [x for x, k in zip(aux["test"]["sets"], keep) if k]
+    test_rows = split[split.split == "test"]
+    if a.limit:
+        test_rows = test_rows.head(a.limit)
+    pids = test_rows.patient_id.values[keep]
 
-    out_csv = emb / f"sweep_lead{a.lead}{'_quick' if a.quick or a.limit else ''}.csv"
+    # reference: the same probe on the frozen encoder's own TS features
+    ref = macro_auroc(y_test, probe_scores(data["train"]["ts"].numpy()[keep_tr], y_tr,
+                                           data["test"]["ts"].numpy()[keep], device))
+    print(f"frozen-encoder probe AUROC (reference): {ref:.3f}", flush=True)
+
+    out_csv = emb / f"sweep2_lead{a.lead}{'_quick' if a.quick or a.limit else ''}.csv"
     done = set()
     rows_out = []
     if out_csv.exists():  # resume
@@ -129,14 +192,38 @@ def main():
                 row[f"{pair}:{k}"] = mv.get(k, np.nan)
         hit, chance = label_retrieval(z["ts"][keep], z["txt"][keep], sets_keep)
         row["ts2txt_label_p@10"] = hit
-        row["ts_zeroshot_auroc"] = zero_shot_auroc(z["ts"][keep], ztr_txt, aux["train"]["sets"], y_test)
+        zs = zs_scores(z["ts"][keep], ztr_txt, aux["train"]["sets"])
+        row["ts_zeroshot_auroc"] = macro_auroc(y_test, zs)
+        # independent downstream check: linear probe on the projected TS embedding
+        ztr_ts = embed_all(heads, data["train"], device)["ts"].cpu().numpy()
+        pr = probe_scores(ztr_ts[keep_tr], y_tr, z["ts"][keep], device)
+        row["ts_probe_auroc"] = macro_auroc(y_test, pr)
+        row["frozen_probe_auroc_ref"] = ref
+        # validation-set versions, for the model-selection analysis
+        zv = {m: v.cpu().numpy() for m, v in embed_all(heads, data["val"], device).items()}
+        mvv = all_metrics_v2(zv["ts"], zv["txt"], gv)
+        for k in METRICS:
+            row[f"val:ts-txt:{k}"] = mvv.get(k, np.nan)
+        row["val:ts_zeroshot_auroc"] = macro_auroc(y_val, zs_scores(zv["ts"][keep_v], ztr_txt,
+                                                                    aux["train"]["sets"]))
+        # patient-level bootstrap on the test set
+        zt = z["ts"][keep] / np.linalg.norm(z["ts"][keep], axis=1, keepdims=True)
+        zx = z["txt"][keep] / np.linalg.norm(z["txt"][keep], axis=1, keepdims=True)
+        S = zt @ zx.T
+        n = len(S)
+        marg = np.diag(S) - (S.sum(1) - np.diag(S)) / (n - 1)
+        ci = patient_bootstrap(pids, {"cos_margin": lambda i: marg[i].mean(),
+                                      "zs_auroc": lambda i: macro_auroc(y_test[i], zs[i]),
+                                      "probe_auroc": lambda i: macro_auroc(y_test[i], pr[i])})
+        for k, (lo, hi) in ci.items():
+            row[f"ci_lo:{k}"], row[f"ci_hi:{k}"] = lo, hi
         row["seconds"] = time.time() - t0
         rows_out.append(row)
         pd.DataFrame(rows_out).to_csv(out_csv, index=False)
         print(f"{kind:7s} mix {mix:.2f} st {key[2]:5.2f} tau {tau:.2f} ep {len(log):2d} | "
               f"margin {row['ts-txt:cos_margin']:.3f} procS {row['ts-txt:procrustes_sym']:.3f} "
               f"R@1dup {row['ts-txt:R@1_dupaware']:.4f} | AUROC {row['ts_zeroshot_auroc']:.3f} "
-              f"labP {row['ts2txt_label_p@10']:.3f} ({row['seconds']:.0f}s)", flush=True)
+              f"probe {row['ts_probe_auroc']:.3f} labP {row['ts2txt_label_p@10']:.3f} ({row['seconds']:.0f}s)", flush=True)
 
     df = pd.DataFrame(rows_out)
     corr = []
