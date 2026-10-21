@@ -1,0 +1,18 @@
+{
+  "_note": "Label-free class descriptions for the 5 PTB-XL diagnostic superclasses. Written 2026-10-21 before any prompt-based evaluation was run, and frozen (committed) before evaluation. Never selected or edited using results. Index i within a language is paraphrase i, so prompt i across classes forms one classifier. The pre-registered readout is the ensemble over all 8 prompts per class (both languages); single-prompt and per-language results are reported as variation.",
+  "classes": ["NORM", "MI", "STTC", "CD", "HYP"],
+  "en": {
+    "NORM": ["normal ecg", "sinus rhythm, normal ecg", "normal electrocardiogram", "no abnormalities, normal ecg"],
+    "MI": ["myocardial infarction", "old myocardial infarction", "infarction, pathological q waves", "anterior or inferior myocardial infarction"],
+    "STTC": ["st-t changes", "nonspecific st-t wave abnormality", "st depression and t wave inversion", "repolarization abnormality"],
+    "CD": ["conduction disturbance", "bundle branch block", "av block, conduction delay", "left anterior fascicular block or bundle branch block"],
+    "HYP": ["ventricular hypertrophy", "left ventricular hypertrophy", "hypertrophy by voltage criteria", "atrial enlargement or ventricular hypertrophy"]
+  },
+  "de": {
+    "NORM": ["normales ekg", "sinusrhythmus, normales ekg", "normales elektrokardiogramm", "keine auffaelligkeiten, normales ekg"],
+    "MI": ["myokardinfarkt", "alter myokardinfarkt", "infarkt, pathologische q-zacken", "vorderwand- oder hinterwandinfarkt"],
+    "STTC": ["st-t-veraenderungen", "unspezifische st-t-veraenderungen", "st-senkung und t-negativierung", "erregungsrueckbildungsstoerung"],
+    "CD": ["erregungsleitungsstoerung", "schenkelblock", "av-block, leitungsverzoegerung", "linksanteriorer hemiblock oder schenkelblock"],
+    "HYP": ["ventrikelhypertrophie", "linksventrikulaere hypertrophie", "hypertrophiezeichen nach voltagekriterien", "vorhofvergroesserung oder ventrikelhypertrophie"]
+  }
+}
