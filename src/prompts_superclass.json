@@ -1,5 +1,5 @@
 {
-  "_note": "Label-free class descriptions for the 5 PTB-XL diagnostic superclasses. Written 2026-10-21 before any prompt-based evaluation was run, and frozen (committed) before evaluation. Never selected or edited using results. Index i within a language is paraphrase i, so prompt i across classes forms one classifier. The pre-registered readout is the ensemble over all 8 prompts per class (both languages); single-prompt and per-language results are reported as variation.",
+  "_note": "Label-free class descriptions for the 5 PTB-XL diagnostic superclasses. Written 2026-10-21 before any prompt-based evaluation was run, and frozen (committed) before evaluation. German prompts use umlauts, matching the reports' orthography (fixed before any evaluation). Never selected or edited using results. Index i within a language is paraphrase i, so prompt i across classes forms one classifier. The pre-registered readout is the ensemble over all 8 prompts per class (both languages); single-prompt and per-language results are reported as variation.",
   "classes": ["NORM", "MI", "STTC", "CD", "HYP"],
   "en": {
     "NORM": ["normal ecg", "sinus rhythm, normal ecg", "normal electrocardiogram", "no abnormalities, normal ecg"],
@@ -9,10 +9,10 @@
     "HYP": ["ventricular hypertrophy", "left ventricular hypertrophy", "hypertrophy by voltage criteria", "atrial enlargement or ventricular hypertrophy"]
   },
   "de": {
-    "NORM": ["normales ekg", "sinusrhythmus, normales ekg", "normales elektrokardiogramm", "keine auffaelligkeiten, normales ekg"],
+    "NORM": ["normales ekg", "sinusrhythmus, normales ekg", "normales elektrokardiogramm", "keine auffälligkeiten, normales ekg"],
     "MI": ["myokardinfarkt", "alter myokardinfarkt", "infarkt, pathologische q-zacken", "vorderwand- oder hinterwandinfarkt"],
-    "STTC": ["st-t-veraenderungen", "unspezifische st-t-veraenderungen", "st-senkung und t-negativierung", "erregungsrueckbildungsstoerung"],
-    "CD": ["erregungsleitungsstoerung", "schenkelblock", "av-block, leitungsverzoegerung", "linksanteriorer hemiblock oder schenkelblock"],
-    "HYP": ["ventrikelhypertrophie", "linksventrikulaere hypertrophie", "hypertrophiezeichen nach voltagekriterien", "vorhofvergroesserung oder ventrikelhypertrophie"]
+    "STTC": ["st-t-veränderungen", "unspezifische st-t-veränderungen", "st-senkung und t-negativierung", "erregungsrückbildungsstörung"],
+    "CD": ["erregungsleitungsstörung", "schenkelblock", "av-block, leitungsverzögerung", "linksanteriorer hemiblock oder schenkelblock"],
+    "HYP": ["ventrikelhypertrophie", "linksventrikuläre hypertrophie", "hypertrophiezeichen nach voltagekriterien", "vorhofvergrößerung oder ventrikelhypertrophie"]
   }
 }
