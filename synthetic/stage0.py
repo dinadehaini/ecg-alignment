@@ -33,6 +33,8 @@ import torch.nn.functional as F
 
 import world as W
 
+OUT = Path("results")
+
 HELD_MASKS = [(1, 1, 0, 1), (0, 1, 0, 1), (1, 0, 1, 1)]
 TRAIN_VIEWS = [i for i, (m, w) in enumerate(W.VIEWS) if m not in HELD_MASKS]
 CN = [n for n, _, _ in W.CLAIMS]
@@ -213,6 +215,7 @@ def metrics(p, d, idx):
             "excess_brier": float(np.mean((p - y) ** 2) - np.mean((o - y) ** 2)),
             "logloss": ll(p), "excess_logloss": ll(p) - ll(o),
             "mae_oracle": float(np.mean(np.abs(p - o))),
+            "exact_excess_brier": float(np.mean((p - o) ** 2)),
             "conf_wrong_side": float(np.mean(((p > 0.9) & (o < 0.5)) | ((p < 0.1) & (o > 0.5)))),
             "conf_when_oracle_ambig": float(np.mean((np.abs(p - 0.5) > 0.4) & (np.abs(o - 0.5) < 0.4))),
             "aurc": aurc(p, y), "aurc_oracle": aurc(o, y)}
@@ -233,6 +236,8 @@ def groups(d):
             "structurally non-identifiable": ~s,
             "non-identifiable, posterior-confident (prior)": ~s & ~amb,
             "trap: evidence survives hidden channel": trap,
+            "trap, seen view and composition": trap & seen & ~comp,
+            "trap, held-out view or composition": trap & ~(seen & ~comp),
             "seen views": seen & ~comp,
             "unseen channel masks": ~seen,
             "held-out (claim, view) compositions": comp}
@@ -265,6 +270,11 @@ def run_condition(n, sigma, z_prior, seed, n_test, ens):
     probs["distill raw"] = 1 / (1 + np.exp(-lg_te))
     probs["distill cal"] = 1 / (1 + np.exp(-temp_scale(lg_va, va["truth"])(lg_te)))
     G = groups(te)
+    np.savez_compressed(OUT / f"preds_n{n}_s{sigma}_z{z_prior}_seed{seed}.npz",
+                        **{k.replace(" ", "_"): v.astype(np.float32) for k, v in probs.items()},
+                        truth=te["truth"], v=te["v"], c=te["c"], struct=te["struct"],
+                        **{"g_" + str(i): idx for i, idx in enumerate(G.values())},
+                        group_names=np.array(list(G)))
     rows = []
     for meth, p in probs.items():
         for gname, idx in G.items():
@@ -285,7 +295,8 @@ def main():
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--seeds", type=int, default=2)
     a = ap.parse_args()
-    out = Path(a.out)
+    global OUT
+    out = OUT = Path(a.out)
     out.mkdir(exist_ok=True)
     torch.set_num_threads(4)
     if a.quick:
@@ -305,7 +316,7 @@ def main():
     json.dump(dis, open(out / "stage0_ensemble_disagreement.json", "w"), indent=1)
     df = pd.DataFrame(rows)
     key = ["sigma", "z_prior", "n_train", "group", "method"]
-    summ = df.groupby(key)[["n", "brier", "excess_brier", "excess_logloss", "mae_oracle", "conf_wrong_side",
+    summ = df.groupby(key)[["n", "brier", "excess_brier", "exact_excess_brier", "excess_logloss", "mae_oracle", "conf_wrong_side",
                             "conf_when_oracle_ambig", "aurc", "aurc_oracle"]].mean().reset_index()
     summ.to_csv(out / "stage0_summary.csv", index=False)
     main_n = max(sizes)
