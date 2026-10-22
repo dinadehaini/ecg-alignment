@@ -381,3 +381,42 @@ label-free prompts a substantial regret survives correction (.072 [.065, .079]) 
 retrieval still selects reliably (.003), which points to studying query/readout dependence rather than
 building a new selector. Next: confirm the frozen protocol on an independent dataset with different report
 conventions.
+
+## Mechanism analysis (exploratory; 13 tau-0.2 heads; `src/mechanism.py`; query families frozen in `src/query_variants.json` before scoring)
+InfoNCE vs the best soft model (mix 1, soft-tau 0.2; also the validation pick), macro test AUROC over the
+5 superclasses. "proto_k" = class vector averaged from k random single-class TRAIN reports (20 draws).
+
+| Query family | InfoNCE raw | Best raw | Gap raw | InfoNCE text-centered | Best text-centered | Gap centered |
+|---|---|---|---|---|---|---|
+| class names (EN+DE) | .507 | .704 | .197 | .591 | .692 | .101 |
+| clinical descriptions (frozen 8) | .570 | .760 | .190 | .680 | .753 | .072 |
+| report-style statements (hand-written) | .620 | .788 | .169 | .708 | .783 | .075 |
+| 1 real training report per class | .588 | .676 | .088 | .640 | .672 | .032 |
+| 10 real training reports | .659 | .792 | .133 | .754 | .791 | .037 |
+| 100 real training reports | .682 | .806 | .124 | .785 | .807 | .022 |
+| all single-class training reports | .686 | .807 | .121 | .789 | .809 | .019 |
+
+Per class, text-centered (best minus InfoNCE): the hand-written families' residual is largest for MI
+(.11-.14 in all three) and varies by family for NORM (.06-.17), CD (.04-.20) and HYP (.03-.12); STTC is
+small (.01-.04). Report prototypes: ~0 for all classes except HYP (.094).
+
+Shared text direction mu (train mean of projected reports): the patient-level offset x.mu alone has AUROC
+.87 for NORM and .18-.29 for the abnormal classes under InfoNCE (a normal-vs-abnormal axis), and .32 / .61-.66
+under the best soft model (reversed). InfoNCE class vectors load +.22 to +.26 on mu for most families, so
+every class score carries a "normal-ness" term; text-side centering removes it.
+
+Readout vs linear probe (cosine between each class vector and the probe direction for that class, mean over
+classes, on unit-normalized signal embeddings): InfoNCE .02-.15 for every family; best soft .26-.54
+(clinical .35 / .41 centered; reports .38 / .54). InfoNCE's text queries point almost orthogonally to the
+diagnostic directions a probe recovers, although the probe itself reaches .83 AUROC.
+
+**Reading:** the residual gap is not one brittle prompt or class: it appears for every hand-written query
+family (names, clinical, report-style; .07-.10 after centering), concentrated in MI, while queries made of
+real training reports, even a single one, leave only .02-.04. Report-like phrasing written by hand behaves
+like the clinical descriptions, so the distinction is whether the query comes from the training report set,
+not its style. Candidate mechanism: InfoNCE fits the training reports instance by instance and maps novel
+text into directions unrelated to diagnostic signal directions (low probe alignment), while soft targets
+keep the frozen encoder's semantic neighborhoods so new phrasings land near the right signals. Separately,
+centering works for InfoNCE because its shared text direction encodes normal-vs-abnormal and adds it to
+every class score. Testable on MIMIC: corrected gap small for prototypes from MIMIC training reports, larger
+for hand-written queries, and growing with a query's distance from the training reports.
