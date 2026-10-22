@@ -1,0 +1,23 @@
+{
+  "_note": "Controlled query families for the mechanism analysis, written 2026-10-22 and committed before any scoring with them. Families express the same 5 PTB-XL superclass concepts in different forms: bare class names, fixed clinical descriptions (the frozen prompts_superclass.json set, referenced not copied), and report-style statements imitating German ECG report conventions. Report-style statements were written from general knowledge of report phrasing, not copied from or selected on PTB-XL reports. Every variant is reported; none is selected on results. Prototype-averaging variants (k random single-class training reports) are defined in src/mechanism.py.",
+  "classes": ["NORM", "MI", "STTC", "CD", "HYP"],
+  "names": {
+    "NORM": ["normal", "normal"],
+    "MI": ["myocardial infarction", "myokardinfarkt"],
+    "STTC": ["st-t change", "st-t-veränderung"],
+    "CD": ["conduction disturbance", "erregungsleitungsstörung"],
+    "HYP": ["hypertrophy", "hypertrophie"]
+  },
+  "report_style": {
+    "NORM": ["sinusrhythmus. normales ekg.", "sinusrhythmus, linkstyp, sonst normales ekg.",
+             "sinusrhythmus. normale erregungsausbreitung und -rückbildung.", "sinusrhythmus. ekg im normbereich."],
+    "MI": ["sinusrhythmus. q-zacken inferior, alter hinterwandinfarkt möglich.", "sinusrhythmus. r-verlust anterior, alter vorderwandinfarkt.",
+           "sinusrhythmus. pathologisches q in ii, iii, avf. infarkt.", "sinusrhythmus. anteroseptaler infarkt, alter."],
+    "STTC": ["sinusrhythmus. st-senkungen lateral.", "sinusrhythmus. t-negativierung in v4-v6.",
+             "sinusrhythmus. unspezifische st-t-veränderungen.", "sinusrhythmus. erregungsrückbildungsstörung, ischämie möglich."],
+    "CD": ["sinusrhythmus. kompletter rechtsschenkelblock.", "sinusrhythmus. linksanteriorer hemiblock.",
+           "sinusrhythmus. av-block i. grades.", "sinusrhythmus. kompletter linksschenkelblock."],
+    "HYP": ["sinusrhythmus. linksventrikuläre hypertrophie.", "sinusrhythmus. positiver sokolow-index, linkshypertrophie.",
+            "sinusrhythmus. rechtsventrikuläre hypertrophie möglich.", "sinusrhythmus. linksherzhypertrophie mit erregungsrückbildungsstörung."]
+  }
+}
