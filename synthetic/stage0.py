@@ -306,8 +306,16 @@ def main():
         sweep = [(32000, 0.5, 0.5), (32000, 2.0, 0.5), (32000, 1.0, 0.9)]
     conds = [(n, 1.0, 0.5) for n in sizes] + sweep
     rows, dis = [], {}
+    rows_f = out / "stage0_rows.csv"
+    if rows_f.exists():  # resume: keep finished conditions (their preds_*.npz exist)
+        prev = pd.read_csv(rows_f)
+        rows = prev.to_dict("records")
     for n, sigma, zp in conds:
         for seed in range(seeds):
+            if (out / f"preds_n{n}_s{sigma}_z{zp}_seed{seed}.npz").exists() and rows and any(
+                    r["n_train"] == n and r["sigma"] == sigma and r["z_prior"] == zp and r["seed"] == seed for r in rows):
+                print(f"skip n={n} sigma={sigma} z_prior={zp} seed={seed} (done)", flush=True)
+                continue
             r, e = run_condition(n, sigma, zp, seed, n_test, ens if (sigma, zp) == (1.0, 0.5) and n <= 32000 else 0)
             rows += r
             if e:
