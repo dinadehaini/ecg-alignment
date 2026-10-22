@@ -420,3 +420,54 @@ keep the frozen encoder's semantic neighborhoods so new phrasings land near the 
 centering works for InfoNCE because its shared text direction encodes normal-vs-abnormal and adds it to
 every class score. Testable on MIMIC: corrected gap small for prototypes from MIMIC training reports, larger
 for hand-written queries, and growing with a query's distance from the training reports.
+
+## Mechanism follow-up (exploratory; `src/mechanism2.py`; InfoNCE vs best soft)
+Label-informed prototype analyses (sections 1-2 for report sources) are kept separate from the fixed hand-written
+queries. Report sources, single-class records / unique strings (NORM MI STTC CD HYP): train 6637/1240, 1871/1385,
+1753/1225, 1276/832, 399/280; validation strings seen in train 362/80, 62/44, 50/36, 44/37, 7/6; validation
+unseen strings 61/59, 68/65, 44/44, 38/38, 11/11. Validation reports are used as queries and TEST signals are
+scored, so no query contains a scored ECG's report. Size-k comparisons use 20 draws without replacement and
+only classes with >= k reports in every source (k=5: all five; k=10 and 25: CD, MI, NORM, STTC; HYP skipped).
+
+Query source (macro AUROC over the eligible classes at that k; gap = best soft - InfoNCE):
+
+| k | Correction | Train reports | Val, string seen in train | Val, unseen string |
+|---|---|---|---|---|
+| 5 | none | .645 / .775 (gap .129) | .594 / .747 (.153) | .690 / .741 (.051) |
+| 5 | text-centered | .731 / .771 (.040) | .683 / .741 (.058) | .708 / .753 (.045) |
+| 10 | none | .705 / .802 (.097) | .640 / .782 (.141) | .743 / .717 (-.027) |
+| 10 | text-centered | .778 / .803 (.025) | .732 / .778 (.046) | .708 / .739 (.032) |
+| 25 | none | .723 / .809 (.086) | .657 / .796 (.139) | .777 / .726 (-.050) |
+| 25 | text-centered | .801 / .810 (.009) | .747 / .793 (.046) | .710 / .765 (.055) |
+
+Centering accounting (macro AUROC; InfoNCE / best soft). Direct mean subtraction = z.t_c - z.mu with mu the
+mean of unit training text vectors (primary: it is the operation the correction performs on the score);
+projection removal (class-specific loading on the shared direction) reported separately; pipeline = center
+each report, normalize, average:
+
+| Family | Uncorrected | Direct mean subtraction | Projection removal | Pipeline | corr(direct, pipeline) |
+|---|---|---|---|---|---|
+| clinical | .570 / .760 | .633 / .744 | .543 / .761 | .680 / .753 | .96 / .99 |
+| names | .507 / .704 | .551 / .680 | .513 / .704 | .591 / .692 | .97 / .99 |
+| report-style | .620 / .788 | .684 / .783 | .558 / .788 | .708 / .783 | .97 / 1.00 |
+| all train reports | .686 / .807 | .767 / .808 | .659 / .808 | .789 / .809 | .98 / 1.00 |
+
+Correlation of query scores with the linear probe's logits on test ECGs (mean over classes; InfoNCE / best soft):
+clinical .12 / .78 uncorrected, .46 / .76 centered; names -.03 / .60, .21 / .56; report-style .34 / .89, .60 / .87;
+all train reports .56 / .92, .86 / .94.
+
+Secondary: mean cosine of hand-written queries to their nearest training report in the frozen text-encoder space:
+names .72, clinical .79, report-style .82.
+
+**Reading:** (1) Seen vs unseen strings does not separate the held-out queries: after centering, held-out
+reports with seen strings (.046-.058) and with unseen strings (.032-.055) give similar gaps, both larger than
+training-report prototypes (.009-.040) and smaller than hand-written queries (.07-.10). This does not support
+instance memorization (which predicts seen strings to behave like training reports); training-report
+prototypes differ from both held-out sources, and the train advantage grows with k. (2) Subtracting the
+patient-level term z.mu accounts for about 50-80% of the pipeline's gain for InfoNCE (reports: .686 -> .767 of
+.789; clinical: .570 -> .633 of .680); centering before averaging adds the rest (the operations do not
+commute). Removing a projection with a class-specific loading does not help, so "a normality term scaled by
+each class's loading" is not the mechanism; the shared offset itself is. (3) On held-out ECGs, InfoNCE's
+hand-written-query scores agree weakly with the probe logits even after centering (.21-.60), while its
+report-prototype scores agree strongly (.86); the soft model agrees strongly for every family (.56-.94). The
+probe result is now on scores, not only weight angles.
