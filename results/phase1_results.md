@@ -294,3 +294,55 @@ unchanged (0.665-0.683 everywhere). So the high-alignment models are not "more i
 diagnostic sense; they retain a little more text-irrelevant signal detail and finer text-specific
 grouping, which the alignment metrics reward and class-level use does not need. n = 13 per
 condition; no CIs on the preservation measures yet.
+
+## Cleanup checks (13 tau-0.2 models, original reports; `src/cleanup.py`; Colab T4)
+Label-free prompts: `src/prompts_superclass.json`, frozen (committed) before evaluation; pre-registered
+readout = ensemble of 8 prompts per class (4 English, 4 German). Corrections are fit on TRAIN
+embeddings only and applied to the head outputs before L2 normalization. "unsup 9" = InfoNCE + 8
+soft-target models (no label-target arms).
+
+Test AUROC, InfoNCE vs best model, and Spearman (margin vs AUROC) across models:
+
+| Readout | Correction | Models | InfoNCE | Best | Gap | rho margin | rho R@1 dup-aware |
+|---|---|---|---|---|---|---|---|
+| report prototypes | none | unsup 9 | .686 | .807 | .121 | -0.88 | +0.14 |
+| report prototypes | text-side centering | unsup 9 | .789 | .809 | .019 | -0.73 | +0.36 |
+| report prototypes | shared centering | all 13 | .757 | .806 | .049 | | |
+| label-free prompts | none | unsup 9 | .571 | .760 | .189 | -0.95 | +0.18 |
+| label-free prompts | text-side centering | unsup 9 | .681 | .753 | .072 | -0.55 | +0.49 |
+| label-free prompts | shared centering | all 13 | .646 | .750 | .104 | | |
+
+Signal-side centering alone changes nothing (a per-class constant shift). Whitening (ZCA, shrinkage 0.1,
+fit on train) lowers every model and reverses the ordering; not diagnostic (it amplifies low-variance
+directions). Best model in every unsupervised row: soft, mix 1.0, soft-tau 0.2.
+
+Sweep correlations without the label-target arms (51 of 63 models): margin -0.53, symmetric Procrustes
+-0.63, CKA -0.64, mutual kNN -0.67, R@1 exact -0.30, R@1 dup-aware +0.29; within training temperature,
+margin -0.83 / -0.93 / -0.74 (tau .07 / .2 / .5). Selection cost by validation margin: .107-.121 within
+each temperature; by dup-aware R@1: .000.
+
+Paired selection, 100 resamples of validation and test patients, unsup-9 candidates (diff = pick's test
+AUROC minus the full-labeled-validation pick's, same test resample; 95% interval; selection frequency):
+
+| Target readout | Selector | Test AUROC | Diff [95%] | Most-picked model (freq) |
+|---|---|---|---|---|
+| report prototypes | val margin / Procrustes / CKA | .686 | -.121 [-.132, -.109] | InfoNCE (.93-1.0) |
+| report prototypes | val mutual kNN | .690 | -.116 [-.132, -.081] | InfoNCE (.47) |
+| report prototypes | val R@1 exact | .710 | -.097 [-.123, -.071] | soft .5/.05 (.40) |
+| report prototypes | val R@1 dup-aware | .804 | -.003 [-.008, .000] | soft 1/.2 (.90) |
+| report prototypes | val labels, 25 / 50 / 100 patients | .798 / .804 / .805 | -.008 / -.003 / -.001 | soft 1/.2 (.64 / .70 / .83) |
+| report prototypes | val labels, all | .806 | 0 | soft 1/.2 (1.0) |
+| label-free prompts | val margin / Procrustes / CKA | .571 | -.188 [-.197, -.178] | InfoNCE (.93-1.0) |
+| label-free prompts | val R@1 dup-aware | .753 | -.006 [-.035, .000] | soft 1/.2 (.90) |
+| label-free prompts | val labels, 25 / 50 / 100 patients | .752 / .756 / .759 | -.008 / -.003 / .000 | soft 1/.2 |
+
+The best soft model is also the one picked by validation (labels: 100% of resamples), so it is not a
+test-set pick. Not yet run: the selection test on the text-centered readouts. Duplicate-aware chance
+levels (random ranking), test: R@1 .0142, R@10 .109 (exact R@1 chance .00025).
+
+**Reading:** a large part of the report-prototype gap is text-side prototype geometry (a shared mean
+direction in the projected report embeddings): text-side centering lifts InfoNCE from .686 to .789 and
+leaves a .019 gap. With the label-free prompts a .072 gap survives the same correction. Selecting by
+validation margin/Procrustes/CKA picks InfoNCE almost always and costs .12 (reports) to .19 (prompts)
+AUROC under the uncorrected readouts; duplicate-aware retrieval and a 25-patient labeled validation set
+both come within .01.
