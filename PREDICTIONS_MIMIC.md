@@ -21,12 +21,12 @@ evidence behind them is exploratory (PTB-XL was examined extensively); MIMIC is 
 1. The soft-target advantage over InfoNCE is larger for hand-written descriptions than for report-derived
    prototypes.
 2. That difference persists after text-side centering and with matched prototype sizes.
-3. Comparing prototypes from training-patient reports with prototypes from held-out-patient reports
-   (exact-duplicate strings vs never-seen strings) tells apart instance memorization (held-out unseen
-   strings behave like hand-written text) from broader text-distribution shift (they behave like training
-   reports).
-4. Secondary: the gap grows with a query's distance from the training reports, measured in the original
-   frozen text-encoder space. (Distance can also track differences in clinical meaning.)
+3. Within held-out-patient report prototypes, previously unseen wording does not show a larger gap than
+   wording seen in training (as on PTB-XL). Identical strings give identical query vectors, so any
+   train-vs-held-out difference reflects string selection, frequency and combination, not patient source.
+4. Exploratory only (not a primary prediction; amended 2026-10-22 before any MIMIC work, because frozen-text
+   proximity did not explain the PTB-XL gap): whether the gap grows with a query's distance from the
+   training reports in the original frozen text-encoder space. (Distance can also track clinical meaning.)
 5. Duplicate-aware retrieval selects within .01 of the full labeled-validation selector.
 
 What would count against the PTB-XL account: no soft-target advantage for hand-written descriptions after

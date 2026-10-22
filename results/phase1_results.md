@@ -471,3 +471,25 @@ each class's loading" is not the mechanism; the shared offset itself is. (3) On 
 hand-written-query scores agree weakly with the probe logits even after centering (.21-.60), while its
 report-prototype scores agree strongly (.86); the soft model agrees strongly for every family (.56-.94). The
 probe result is now on scores, not only weight angles.
+
+### Corrections to the follow-up wording, and the frozen PTB-XL claim
+- **Identical strings:** the same report string gives the same query vector whatever its source (597 strings
+  shared by train and validation: max relative embedding difference 5.6e-6, padding-level noise). So the
+  train-vs-validation prototype difference comes from which strings are drawn, their frequencies, diagnosis
+  assignments and combination, not from the patients they came from. Correct wording: *within
+  validation-derived report prototypes, previously unseen wording does not show a larger performance gap than
+  wording seen during training.* (Separately: of 8,461 training reports that duplicate an earlier report after
+  lowercasing and whitespace collapsing, 14 (0.17%) differ in raw whitespace/line breaks and so get different
+  embeddings; the earlier statement that identical reports map to identical embeddings holds up to these.)
+- **Operation order:** mean subtraction commutes with averaging; the step that breaks equivalence is the
+  normalization. The pipeline is: project each report -> subtract the train text mean -> L2-normalize each
+  centered report -> average -> L2-normalize the class vector. The gain beyond direct subtraction of z.mu comes
+  from normalizing each centered report before averaging (it reweights reports by their centered norm).
+
+**Frozen PTB-XL claim (exploratory evidence; to be tested on MIMIC):** on PTB-XL, soft-target training
+reduces the performance difference between report-derived and independently written diagnostic queries.
+InfoNCE retains strong linear-probe performance, but its independent-query scores agree less with
+diagnostic probe scores. Text centering substantially improves report-based readout through removal of a
+shared score component, with additional gains depending on prototype normalization. The probe correlations
+support this but do not establish a causal mechanism, and the supervised probe is not an oracle. Frozen-text
+proximity to training reports does not yet explain the gap.
