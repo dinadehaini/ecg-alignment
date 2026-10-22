@@ -86,11 +86,18 @@ def main():
     pools = {"train": ("train", pool("train", lambda r: True)),
              "val, string seen in train": ("val", pool("val", lambda r: r in train_strings)),
              "val, unseen string": ("val", pool("val", lambda r: r not in train_strings))}
-    counts = [{"source": k, **{c: int(len(v[1][c])) for c in CLASSES}} for k, v in pools.items()]
+    counts = [{"source": k, "count": "records", **{c: int(len(v[1][c])) for c in CLASSES}} for k, v in pools.items()]
+    counts += [{"source": k, "count": "unique strings",
+                **{c: len({info[v[0]]["rep"][i] for i in v[1][c]}) for c in CLASSES}} for k, v in pools.items()]
     print(pd.DataFrame(counts).to_string(index=False), flush=True)
     rng = np.random.default_rng(0)
-    draws = {(src, k): [{c: rng.choice(p[c], size=k, replace=False) if len(p[c]) >= k else None for c in CLASSES}
-                        for _ in range(N_DRAWS)] for src, (_, p) in pools.items() for k in KS}
+    # a class enters the size-k comparison only if EVERY source has >= k reports for it (no smaller k, no
+    # sampling with replacement); otherwise that (k, class) comparison is marked skipped
+    eligible = {k: [c for c in CLASSES if all(len(p[c]) >= k for _, p in pools.values())] for k in KS}
+    skipped = [{"k": k, "cls": c, "status": "included" if c in eligible[k] else "skipped (a source has < k reports)"}
+               for k in KS for c in CLASSES]
+    draws = {(src, k): [{c: rng.choice(p[c], size=k, replace=False) for c in eligible[k]} for _ in range(N_DRAWS)]
+             for src, (_, p) in pools.items() for k in KS}
 
     # hand-written queries, raw frozen embeddings
     here = Path(__file__).resolve().parent
@@ -139,6 +146,7 @@ def main():
         mu_raw = ztxt["train"].mean(0)
         m_hat = unit(mu_raw)
         zm = zte @ m_hat
+        mu_unit = unit(ztxt["train"]).mean(0)  # mean of unit text vectors: same space as the prototypes
 
         def cvec(Z, centered):
             Z = Z - mu_raw if centered else Z
@@ -150,7 +158,7 @@ def main():
             for centered in (False, True):
                 for di, dsel in enumerate(dl):
                     for j, c in enumerate(CLASSES):
-                        if dsel[c] is None:
+                        if c not in dsel:
                             continue
                         v = cvec(ztxt[s_split][dsel[c]], centered)
                         r1.append({"model": key, "source": src, "k": k, "centered": centered, "draw": di,
@@ -167,13 +175,18 @@ def main():
                     continue
                 cu = cvec(Zc[c], False)
                 cc_ = cvec(Zc[c], True)
+                t_c = unit(Zc[c]).mean(0)  # un-normalized prototype (mean of unit vectors)
                 s_unc, s_pipe = zte @ cu, zte @ cc_
-                s_off = s_unc - (cu @ m_hat) * zm
-                r2.append({"model": key, "family": fam, "cls": c, "loading": float(cu @ m_hat),
+                # direct text-mean subtraction: z.(t_c - mu) = z.t_c - z.mu; the per-class norm of
+                # (t_c - mu) is constant across patients, so the patient-level term is exactly z.mu
+                s_direct = zte @ t_c - zte @ mu_unit
+                s_proj = s_unc - (cu @ m_hat) * zm  # projection removal (has a class-specific loading)
+                r2.append({"model": key, "family": fam, "cls": c, "loading on m": float(cu @ m_hat),
                            "auroc uncorrected": auroc(yt[kt, j], s_unc[kt]),
-                           "auroc offset removed": auroc(yt[kt, j], s_off[kt]),
-                           "auroc centering pipeline": auroc(yt[kt, j], s_pipe[kt]),
-                           "corr(offset-removed, pipeline)": float(np.corrcoef(s_off, s_pipe)[0, 1])})
+                           "auroc direct mean subtraction": auroc(yt[kt, j], s_direct[kt]),
+                           "auroc projection removal": auroc(yt[kt, j], s_proj[kt]),
+                           "auroc pipeline (center, normalize, average)": auroc(yt[kt, j], s_pipe[kt]),
+                           "corr(direct, pipeline)": float(np.corrcoef(s_direct, s_pipe)[0, 1])})
                 for lab, sc_ in (("uncorrected", s_unc), ("centered", s_pipe)):
                     r3.append({"model": key, "family": fam, "cls": c, "readout": lab,
                                "corr with probe logit": float(np.corrcoef(sc_[kt], logits[kt, j])[0, 1])})
@@ -197,14 +210,17 @@ def main():
     else:
         t1 = pd.DataFrame({"note": ["no source had >= k reports for any class"]})
     t2 = D2[D2.model.isin([I, B])].groupby(["family", "model"])[
-        ["loading", "auroc uncorrected", "auroc offset removed", "auroc centering pipeline",
-         "corr(offset-removed, pipeline)"]].mean().reset_index()
+        ["loading on m", "auroc uncorrected", "auroc direct mean subtraction", "auroc projection removal",
+         "auroc pipeline (center, normalize, average)", "corr(direct, pipeline)"]].mean().reset_index()
     t3 = D3[D3.model.isin([I, B])].groupby(["family", "readout", "model"])["corr with probe logit"].mean().unstack("model").reset_index()
     t4 = dist.groupby("family").nearest_train_cos.agg(["mean", "min", "max"]).reset_index()
     text = "\n".join([
         f"# Mechanism follow-up (lead {a.lead}; exploratory; InfoNCE vs {B})\n",
-        "Single-class report counts per source:\n", pd.DataFrame(counts).to_markdown(index=False),
-        "\n## 1. Query source, matched k (macro AUROC over classes with >= k reports in that source; 20 draws)\n",
+        "Label-informed analyses (sections 1-2 use report prototypes selected by diagnosis); fixed-prompt\n"
+        "results are in sections 2-3 under the hand-written families and are reported separately.\n",
+        "Single-class report counts per source (records and unique strings):\n", pd.DataFrame(counts).to_markdown(index=False),
+        "\nSize-k comparisons included / skipped per class:\n", pd.DataFrame(skipped).to_markdown(index=False),
+        "\n## 1. Query source, matched k (macro AUROC over the classes included at that k in ALL sources; 20 draws without replacement)\n",
         t1.to_markdown(index=False, floatfmt=".3f"),
         "\n## 2. Centering accounting (mean over classes)\n", t2.to_markdown(index=False, floatfmt=".3f"),
         "\n## 3. Correlation of query scores with probe logits on test ECGs (mean over classes)\n",
