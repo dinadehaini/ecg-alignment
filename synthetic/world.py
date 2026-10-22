@@ -118,7 +118,9 @@ def sample(n, sigma, rng, views=None, claims=None, z_prior=0.5, exclude=()):
     y_full = TRAJ[h] + sigma * rng.standard_normal((n, N_CH, T))
     y = y_full * M
     # exact posterior over hypotheses given the observed entries
-    ll = -0.5 * (((y[:, None] - TRAJ[None] * M[:, None]) ** 2) * M[:, None]).sum((2, 3)) / sigma ** 2
+    ll = np.concatenate([  # chunked to bound memory
+        -0.5 * (((y[i:i + 2000, None] - TRAJ[None] * M[i:i + 2000, None]) ** 2) * M[i:i + 2000, None]).sum((2, 3))
+        / sigma ** 2 for i in range(0, n, 2000)])
     lp = ll + np.log(pr)[None]
     lp -= lp.max(1, keepdims=True)
     post_h = np.exp(lp)
