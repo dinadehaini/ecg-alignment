@@ -346,3 +346,38 @@ leaves a .019 gap. With the label-free prompts a .072 gap survives the same corr
 validation margin/Procrustes/CKA picks InfoNCE almost always and costs .12 (reports) to .19 (prompts)
 AUROC under the uncorrected readouts; duplicate-aware retrieval and a 25-patient labeled validation set
 both come within .01.
+
+## Corrected selection regret (text-centered readouts; unsup-9 candidates; 100 val/test patient resamples)
+Operation order: head output -> subtract the TRAIN mean of the projected text embeddings from the class
+vectors' inputs -> L2 normalize -> cosine. Text-side centering and the 8-prompt ensemble are now frozen as
+the primary protocol; because text-only centering emerged during this investigation, the PTB-XL result
+below is exploratory and needs confirmation on an independent dataset.
+
+| Readout | Selector | Test AUROC | Diff vs full labeled val [95%] | Most-picked (freq) |
+|---|---|---|---|---|
+| reports, text-centered | val margin / Procrustes / CKA | .789 | -.019 [-.025, -.013] | InfoNCE (.93-1.0) |
+| reports, text-centered | val mutual kNN | .793 | -.015 [-.025, -.002] | InfoNCE (.47) |
+| reports, text-centered | val R@1 exact | .801 | -.007 [-.019, +.001] | soft .5/.05 (.40) |
+| reports, text-centered | val R@1 dup-aware | .808 | -.000 [-.001, +.002] | soft 1/.2 (.90) |
+| reports, text-centered | val labels 25 / 50 / 100 patients | .804 / .805 / .807 | -.004 / -.003 / -.001 | soft 1/.2 (.42 / .43 / .60) |
+| prompts, text-centered | val margin / Procrustes / CKA | .680 | -.072 [-.079, -.065] | InfoNCE (.93-1.0) |
+| prompts, text-centered | val mutual kNN | .688 | -.064 [-.078, -.040] | InfoNCE (.47) |
+| prompts, text-centered | val R@1 exact | .701 | -.050 [-.071, -.034] | soft .5/.05 (.40) |
+| prompts, text-centered | val R@1 dup-aware | .749 | -.003 [-.025, .000] | soft 1/.2 (.90) |
+| prompts, text-centered | val labels 25 / 50 / 100 patients | .740 / .745 / .748 | -.012 [-.050, 0] / -.006 / -.004 | soft 1/.2 (.60 / .77 / .84) |
+
+Small labeled budgets: with 25 validation patients, 6% of resamples have one superclass with no positives or
+no negatives (undefined AUROC; handled by averaging the defined classes); none at 50 or 100.
+
+Anisotropy (norm of the train mean / mean per-example norm, head outputs before normalization): signal side
+.016-.068, text side .21-.42 (InfoNCE .22, best soft .25, label-target models up to .42). The signal mean is
+tiny relative to individual embeddings, so signal-side centering barely changes anything after
+renormalization; the projected report embeddings share a large common direction, which text-side centering
+removes.
+
+**Reading (decision rule from the second review):** with report prototypes, the corrected selection regret
+is small (.019), so the broad "alignment-based selection fails" pitch does not hold for that readout. With
+label-free prompts a substantial regret survives correction (.072 [.065, .079]) while duplicate-aware
+retrieval still selects reliably (.003), which points to studying query/readout dependence rather than
+building a new selector. Next: confirm the frozen protocol on an independent dataset with different report
+conventions.
