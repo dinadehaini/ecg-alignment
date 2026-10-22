@@ -85,8 +85,8 @@ def selector_metrics(X, Y, g, device="cpu"):
     """The six selector metrics only (all_metrics_v2 also computes unused variants).
     Symmetric Procrustes and CKA run in torch (float64) on `device`; definitions match metrics(_v2)."""
     out = {"cos_margin": cosine_stats(X, Y)["cos_margin"], "mutual_knn@5": mutual_knn(X, Y, k=5)}
-    Xt = torch.as_tensor(X, dtype=torch.float64, device=device)
-    Yt = torch.as_tensor(Y, dtype=torch.float64, device=device)
+    Xt = torch.as_tensor(X, dtype=torch.float32, device=device)  # float64 is very slow on T4
+    Yt = torch.as_tensor(Y, dtype=torch.float32, device=device)
     Xc, Yc = Xt - Xt.mean(0), Yt - Yt.mean(0)
     sv = torch.linalg.svdvals((Xc / Xc.norm()).T @ (Yc / Yc.norm()))
     out["procrustes_sym"] = float(max(0.0, 1.0 - float(sv.sum()) ** 2))
@@ -221,6 +221,10 @@ def main():
         test_m = all_metrics_v2(unit(raw["test"]["ts"]), unit(raw["test"]["txt"]), info["test"]["g"])
         base = {"model": key, "kind": kind, "mix": mix, "soft_tau": st if st is not None else -1.0}
         base.update({f"test:{k}": test_m.get(k, np.nan) for k in ALIGN})
+        # anisotropy: norm of the train mean relative to the mean per-example norm (pre-normalization)
+        for m in ("ts", "txt"):
+            Z = raw["train"][m]
+            base[f"aniso_{m}"] = float(np.linalg.norm(Z.mean(0)) / np.linalg.norm(Z, axis=1).mean())
         store = {}
         for cname, (ts_t, tx_t) in corr.items():
             zsig = {s: apply(ts_t, raw[s]["ts"]) for s in ("val", "test")}
@@ -233,7 +237,7 @@ def main():
                 for s in ("val", "test"):
                     S = scores(zsig[s], P)
                     r[f"{s}_auroc"] = macro_auroc(info[s]["y"], S[info[s]["keep"]])
-                    if rname in ("reports", "prompts:ens8") and cname in ("none", "whiten:shared", "center:shared"):
+                    if rname in ("reports", "prompts:ens8") and cname in ("none", "center:txt"):
                         store[(cname, rname, s)] = S
                 rows_out.append(r)
         store["zs_val"], store["zt_val"] = unit(raw["val"]["ts"]), unit(raw["val"]["txt"])
@@ -241,7 +245,8 @@ def main():
         print(f"{key}: " + " ".join(f"{r['correction']}/{r['readout']} {r['test_auroc']:.3f}"
                                     for r in rows_out[-len(corr) * len(readouts):]
                                     if r["readout"] in ("reports", "prompts:ens8")
-                                    and r["correction"] in ("none", "center:shared", "whiten:shared")), flush=True)
+                                    and r["correction"] in ("none", "center:txt"))
+              + f" | aniso ts {base['aniso_ts']:.2f} txt {base['aniso_txt']:.2f}", flush=True)
     df = pd.DataFrame(rows_out)
     df.to_csv(emb / f"cleanup_lead{a.lead}.csv", index=False)
 
@@ -293,7 +298,8 @@ def main():
     trows = {p: np.flatnonzero(tp == p) for p in np.unique(tp)}
     keys = list(per_model)
     sel_rows = []
-    targets = [("none", "reports"), ("none", "prompts:ens8"), ("whiten:shared", "prompts:ens8")]
+    targets = [("none", "reports"), ("none", "prompts:ens8"), ("center:txt", "reports"), ("center:txt", "prompts:ens8")]
+    undefined = {n: [] for n in BUDGETS}  # per budget resample: number of classes with an undefined AUROC
     kv, kt = info["val"]["keep"], info["test"]["keep"]
     # map keep-filtered label rows: build full-length label arrays (unlabeled rows masked by keep)
     def full_y(s):
@@ -312,22 +318,28 @@ def main():
         for k in keys:
             st_ = per_model[k][1]
             align_vals[k] = selector_metrics(st_["zs_val"][vr], st_["zt_val"][vr], info["val"]["g"][vr], device)
+        for n, rr in budget_rows.items():
+            yb = yv[rr[kv[rr]]]
+            undefined[n].append(int(sum(len(set(yb[:, j])) < 2 for j in range(yb.shape[1]))))
         cand_sets = {"all 13": keys, "unsup 9": [k for k in keys if not k.startswith("label")]}
         for cname, rname in targets:
             test_all = {k: macro_auroc(yt[trk], per_model[k][1][(cname, rname, "test")][trk]) for k in keys}
-            val_auc = lambda rows, ks: {k: macro_auroc(yv[rows[kv[rows]]],
-                                                       per_model[k][1][(cname, rname, "val")][rows[kv[rows]]]) for k in ks}
+            # macro AUROC averages only the classes with both labels present (undefined classes are dropped)
+            vauc = lambda rows: {k: macro_auroc(yv[rows[kv[rows]]],
+                                                per_model[k][1][(cname, rname, "val")][rows[kv[rows]]]) for k in keys}
+            full_all = vauc(vr)
+            bud_all = {n: vauc(rr) for n, rr in budget_rows.items()}
             for cs_name, ks in cand_sets.items():
                 test_auc = {k: test_all[k] for k in ks}
                 sel = {}
                 for mm in ALIGN:
                     vals = {k: align_vals[k][mm] for k in ks}
                     sel[f"val {mm}"] = (min if mm in LOWER_BETTER else max)(vals, key=vals.get)
-                full = val_auc(vr, ks)
+                full = {k: full_all[k] for k in ks}
                 sel["val labels (all)"] = max(full, key=full.get)
-                for n, rr in budget_rows.items():
-                    bv = val_auc(rr, ks)
-                    sel[f"val labels ({n} patients)"] = max(bv, key=bv.get)
+                for n in budget_rows:
+                    bv = {k: bud_all[n][k] for k in ks}
+                    sel[f"val labels ({n} patients)"] = max(bv, key=lambda k: -1 if np.isnan(bv[k]) else bv[k])
                 best_test = max(test_auc.values())
                 for sname, k in sel.items():
                     sel_rows.append({"target": f"{rname} [{cname}]", "candidates": cs_name, "selector": sname,
@@ -366,6 +378,16 @@ def main():
         "diff = test AUROC of the selector's pick minus that of the full-validation labeled selector "
         "(paired, same test resample); regret = best model in that test resample minus the pick.\n",
         selsum.to_markdown(index=False, floatfmt=".3f"),
+        "\n## Small labeled budgets: classes with undefined AUROC (no positives or no negatives sampled)\n",
+        pd.DataFrame([{"patients": n, "share of resamples with >=1 undefined class": float(np.mean(np.array(v) > 0)),
+                       "mean undefined classes": float(np.mean(v)), "max": int(np.max(v))}
+                      for n, v in undefined.items() if v]).to_markdown(index=False, floatfmt=".3f"),
+        "(handling: macro AUROC averages the defined classes only)\n",
+        "\n## Anisotropy of head outputs (norm of train mean / mean per-example norm, before L2 normalization)\n",
+        df.drop_duplicates("model")[["model", "aniso_ts", "aniso_txt"]].to_markdown(index=False, floatfmt=".3f"),
+        "\nOperation order for every correction: head output -> subtract train mean (whitening: then transform) -> "
+        "L2 normalize -> cosine with L2-normalized class vectors. Signal-side centering changes rankings only "
+        "through the renormalization, so its effect grows with the signal-side anisotropy.\n",
         "\n## Duplicate-aware chance levels (random ranking)\n",
         pd.DataFrame(chance).T.to_markdown(floatfmt=".4f")])
     print(text, flush=True)
