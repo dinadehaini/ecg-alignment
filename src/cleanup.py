@@ -34,14 +34,15 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from analyze_sweep import LOWER_BETTER  # noqa: E402
 from label_eval import CLASSES, multihot, superclasses  # noqa: E402
-from metrics_v2 import all_metrics_v2, text_groups  # noqa: E402
+from metrics import cka_rbf, cosine_stats, mutual_knn  # noqa: E402
+from metrics_v2 import all_metrics_v2, procrustes_symmetric, retrieval_groups, text_groups  # noqa: E402
 from sweep import macro_auroc, small_grid  # noqa: E402
 from train_heads import Head, load_emb  # noqa: E402
 from train_heads_v2 import CONFIG_A  # noqa: E402
 
 ALIGN = ["cos_margin", "procrustes_sym", "cka_rbf", "mutual_knn@5", "R@1_exact", "R@1_dupaware"]
 SHRINK = 0.1
-N_BOOT = 200
+N_BOOT = 100
 BUDGETS = (25, 50, 100)
 
 
@@ -63,6 +64,36 @@ def apply(t, Z):
         return Z
     Z = Z - t["mu"]
     return Z if t["W"] is None else Z @ t["W"]
+
+
+def _cka_rbf_t(X, Y):
+    """Torch version of metrics.cka_rbf (same median-heuristic bandwidth and centering)."""
+    def sq(A):
+        n2 = (A * A).sum(1)
+        return (n2[:, None] + n2[None] - 2 * A @ A.T).clamp(min=0)
+    DX, DY = sq(X), sq(Y)
+    iu = torch.triu_indices(len(X), len(X), 1, device=X.device)
+    med = torch.sqrt(torch.cat([DX[iu[0], iu[1]], DY[iu[0], iu[1]]])).median()
+    g = 1.0 / (2.0 * med ** 2)
+    K, L = torch.exp(-g * DX), torch.exp(-g * DY)
+    Kc = K - K.mean(0, keepdim=True) - K.mean(1, keepdim=True) + K.mean()
+    Lc = L - L.mean(0, keepdim=True) - L.mean(1, keepdim=True) + L.mean()
+    return float((Kc * Lc).sum() / (Kc.norm() * Lc.norm()))
+
+
+def selector_metrics(X, Y, g, device="cpu"):
+    """The six selector metrics only (all_metrics_v2 also computes unused variants).
+    Symmetric Procrustes and CKA run in torch (float64) on `device`; definitions match metrics(_v2)."""
+    out = {"cos_margin": cosine_stats(X, Y)["cos_margin"], "mutual_knn@5": mutual_knn(X, Y, k=5)}
+    Xt = torch.as_tensor(X, dtype=torch.float64, device=device)
+    Yt = torch.as_tensor(Y, dtype=torch.float64, device=device)
+    Xc, Yc = Xt - Xt.mean(0), Yt - Yt.mean(0)
+    sv = torch.linalg.svdvals((Xc / Xc.norm()).T @ (Yc / Yc.norm()))
+    out["procrustes_sym"] = float(max(0.0, 1.0 - float(sv.sum()) ** 2))
+    out["cka_rbf"] = _cka_rbf_t(Xt, Yt)
+    r = retrieval_groups(X, Y, g, ks=(1,))
+    out["R@1_exact"], out["R@1_dupaware"] = r["R@1_exact"], r["R@1_dupaware"]
+    return out
 
 
 def corrections(ztr_sig, ztr_txt):
@@ -280,8 +311,7 @@ def main():
         align_vals = {}
         for k in keys:
             st_ = per_model[k][1]
-            m = all_metrics_v2(st_["zs_val"][vr], st_["zt_val"][vr], info["val"]["g"][vr])
-            align_vals[k] = {mm: m.get(mm, np.nan) for mm in ALIGN}
+            align_vals[k] = selector_metrics(st_["zs_val"][vr], st_["zt_val"][vr], info["val"]["g"][vr], device)
         cand_sets = {"all 13": keys, "unsup 9": [k for k in keys if not k.startswith("label")]}
         for cname, rname in targets:
             test_all = {k: macro_auroc(yt[trk], per_model[k][1][(cname, rname, "test")][trk]) for k in keys}
@@ -304,7 +334,7 @@ def main():
                                      "boot": b, "picked": k, "test_auroc": test_auc[k],
                                      "diff_vs_labels_all": test_auc[k] - test_auc[sel["val labels (all)"]],
                                      "regret": best_test - test_auc[k]})
-        if b % 20 == 0:
+        if b % 5 == 0:
             print(f"boot {b}/{a.n_boot}", flush=True)
     sel = pd.DataFrame(sel_rows)
     sel.to_csv(emb / f"cleanup_selection_lead{a.lead}.csv", index=False)
