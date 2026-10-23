@@ -1,0 +1,35 @@
+{
+  "_note": "Hand-written queries for the 8 MIMIC-IV-ECG report-derived concepts, written 2026-10-23 before any MIMIC model existed and frozen with the label mapping. Same template policy as PTB-XL (class names, short clinical descriptions, report-style statements), English only (MIMIC machine reports are English). PRIMARY readout: the 'clinical' family ensemble. Caveat: the report-style family was written after viewing the MIMIC statement vocabulary (needed to build the label mapping), so it may resemble real machine statements; it is reported as secondary. Infarct prompts avoid acute-MI wording (the concept is a reported infarct pattern, mostly old / age undetermined). Never edited using results.",
+  "concepts": ["normal_ecg", "atrial_fibrillation", "reported_infarct_pattern", "intraventricular_conduction_abnormality",
+               "left_ventricular_hypertrophy", "st_t_changes", "sinus_bradycardia", "sinus_tachycardia"],
+  "names": {
+    "normal_ecg": ["normal"],
+    "atrial_fibrillation": ["atrial fibrillation"],
+    "reported_infarct_pattern": ["infarct"],
+    "intraventricular_conduction_abnormality": ["bundle branch block"],
+    "left_ventricular_hypertrophy": ["left ventricular hypertrophy"],
+    "st_t_changes": ["st-t changes"],
+    "sinus_bradycardia": ["bradycardia"],
+    "sinus_tachycardia": ["tachycardia"]
+  },
+  "clinical": {
+    "normal_ecg": ["normal electrocardiogram", "no abnormalities on the ecg", "normal sinus rhythm with normal intervals and morphology", "ecg within normal limits"],
+    "atrial_fibrillation": ["atrial fibrillation", "irregularly irregular rhythm without p waves", "atrial fibrillation with variable ventricular rate", "chaotic atrial activity, irregular rr intervals"],
+    "reported_infarct_pattern": ["old myocardial infarction", "pathological q waves from a prior infarct", "infarct pattern of undetermined age", "evidence of previous myocardial infarction"],
+    "intraventricular_conduction_abnormality": ["bundle branch block", "wide qrs due to intraventricular conduction delay", "right or left bundle branch block", "fascicular block or intraventricular conduction defect"],
+    "left_ventricular_hypertrophy": ["left ventricular hypertrophy", "increased qrs voltage consistent with ventricular hypertrophy", "lvh by voltage criteria", "left ventricular hypertrophy with strain pattern"],
+    "st_t_changes": ["st-t wave abnormality", "nonspecific st and t wave changes", "t wave inversion and st depression", "repolarization abnormality"],
+    "sinus_bradycardia": ["sinus bradycardia", "slow sinus rhythm below 60 beats per minute", "low heart rate with normal p waves", "sinus rhythm with bradycardia"],
+    "sinus_tachycardia": ["sinus tachycardia", "fast sinus rhythm above 100 beats per minute", "high heart rate with normal p waves", "sinus rhythm with tachycardia"]
+  },
+  "report_style": {
+    "normal_ecg": ["sinus rhythm. normal ecg.", "normal sinus rhythm, normal ecg", "sinus rhythm with normal axis and intervals", "normal tracing"],
+    "atrial_fibrillation": ["atrial fibrillation with controlled ventricular response", "atrial fibrillation, abnormal ecg", "atrial fibrillation with rapid rate", "rhythm is atrial fibrillation"],
+    "reported_infarct_pattern": ["old inferior infarct", "anterior infarct, age undetermined", "septal infarct, old", "inferolateral infarct of indeterminate age"],
+    "intraventricular_conduction_abnormality": ["complete right bundle branch block", "complete left bundle branch block", "left anterior fascicular block", "nonspecific intraventricular conduction delay"],
+    "left_ventricular_hypertrophy": ["left ventricular hypertrophy by voltage", "lvh with repolarization abnormality", "left ventricular hypertrophy with secondary st-t changes", "voltage criteria for lvh met"],
+    "st_t_changes": ["nonspecific t wave abnormality", "lateral st-t abnormality", "inferior t wave changes", "diffuse st-t changes"],
+    "sinus_bradycardia": ["sinus bradycardia, otherwise normal", "marked sinus bradycardia", "sinus bradycardia with normal axis", "slow sinus rhythm"],
+    "sinus_tachycardia": ["sinus tachycardia, otherwise normal", "sinus tachycardia with normal axis", "rapid sinus rhythm", "sinus tachycardia, borderline ecg"]
+  }
+}

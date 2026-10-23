@@ -47,13 +47,13 @@ CONCEPTS = {
     "reported_infarct_pattern": (r"infarct", r"cannot rule out .*infarct|may be due to lvh but cannot rule out", None),
     "intraventricular_conduction_abnormality": (
         r"right bundle branch block|left bundle branch block|\brbbb\b|\blbbb\b|iv conduction defect|"
-        r"intraventricular conduction|left anterior fascicular block|left posterior fascicular block|"
+        r"intraventricular conduction|\bivcd\b|left anterior fascicular block|left posterior fascicular block|"
         r"\blafb\b|\blpfb\b|bifascicular block|incomplete (right|left) bundle branch block|incomplete rbbb|incomplete lbbb",
         None, None),
     "left_ventricular_hypertrophy": (r"left ventricular hypertrophy|\blvh\b", r"qrs changes .* may be due to lvh", None),
     "st_t_changes": (
         r"st-t changes|st-t abnormalit|t wave changes|t-wave changes|t wave abnormalit|st junctional depression|"
-        r"st depression|st elevation|repolarization abnormalit|t wave inversion",
+        r"st depression|st elevation|repolarization abnormalit|repol abnrm|repol abnormalit|t wave inversion",
         None, None),
     "sinus_bradycardia": (r"sinus bradycardia", None, None),
     "sinus_tachycardia": (r"sinus tachycardia", None, None),
@@ -67,15 +67,20 @@ def classify_line(line, concept):
         return "UNC"
     if not re.search(pos, line):
         return None
+    if re.search(r"\bif no\b", line):  # conditional statement ("... if no pulmonary disease")
+        return "UNC"
     if neg and re.search(neg, line):
         return "NEG"
     if re.search(NEGHIST, line):
         return "NEG"
-    # hedge words count only if they qualify the finding, i.e. appear before the finding's match and not
-    # only inside a cause clause ("may be due to ...", "are probably due to ...")
     m = re.search(pos, line)
     head = line[:m.start()]
-    if re.search(HEDGE, head) and not re.search(r"due to", head):
+    # the finding appears only as a proposed cause ("... may be / possibly / probably due to lvh"): hedged
+    if re.search(r"due to\s*(\w+\s+)?$", head):
+        return "UNC"
+    # hedge words qualifying the finding itself: checked within the finding's own clause only
+    clause = re.split(r",| but | - |;", head)[-1]
+    if re.search(HEDGE, clause) and not re.search(r"due to", clause):
         return "UNC"
     return "POS"
 

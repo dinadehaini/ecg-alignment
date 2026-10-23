@@ -32,3 +32,24 @@ evidence behind them is exploratory (PTB-XL was examined extensively); MIMIC is 
 What would count against the PTB-XL account: no soft-target advantage for hand-written descriptions after
 centering (prediction 1 fails), or the advantage being the same for report prototypes and hand-written text
 (prediction 1 holds only uncorrected).
+
+## Frozen label mapping, prompts and subset (2026-10-23, before any waveform download or MIMIC model)
+- Label mapping: `src/mimic_labels.py` (statement-level POS / UNC / NEG rules reviewed against every
+  concept-related statement with counts; report-level combination rule: conflict -> excluded, any unequivocal
+  positive -> positive, otherwise uncertain -> excluded, otherwise report-negative). Labels are machine-report-
+  derived targets: the primary result is replication of query-dependent transfer against machine-report labels;
+  clinical diagnostic validity is outside its scope.
+- Concepts: normal ECG; atrial fibrillation; reported infarct pattern (old / age-undetermined patterns
+  included; no acute-MI wording); intraventricular conduction abnormality (bundle and fascicular blocks,
+  intraventricular conduction delay; AV blocks excluded); left ventricular hypertrophy; ST-T changes;
+  sinus bradycardia; sinus tachycardia.
+- Prompts: `src/prompts_mimic.json`; primary readout = clinical-description ensemble; report-style family is
+  secondary (written after viewing the statement vocabulary).
+- Subset: all explicitly paced ECGs excluded; patients shuffled with seed 0, all remaining ECGs of each selected
+  patient kept, patients added until 21,000 ECGs; patient-disjoint split: 21,011 ECGs, 4,358 patients; train
+  16,005 / validation 1,001 / test 4,005 ECGs. Test set: 2,284 unique reports (0.570); 51.6% of test ECGs share
+  their exact report with another test ECG.
+- Eligible test counts (negative / positive / excluded-uncertain; no conflicts or contradictions occurred):
+  normal ECG 3214 / 589 / 202; atrial fibrillation 3510 / 482 / 13; reported infarct pattern 3075 / 397 / 533;
+  intraventricular conduction abnormality 3232 / 717 / 56; LVH 3646 / 245 / 114; ST-T changes 2396 / 1592 / 17;
+  sinus bradycardia 3489 / 516 / 0; sinus tachycardia 3602 / 392 / 11.
