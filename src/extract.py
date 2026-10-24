@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -165,6 +166,8 @@ def main():
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 1,
                     help="processes for loading + plotting ECGs")
     ap.add_argument("--allow-cpu", action="store_true")
+    ap.add_argument("--mimic-subset", default=None,
+                    help="MIMIC mode: path to results/mimic/mimic_subset_labels.csv (--ptbxl = MIMIC data root)")
     args = ap.parse_args()
 
     if torch.cuda.is_available():
@@ -178,7 +181,19 @@ def main():
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    df = make_splits(load_metadata(args.ptbxl))
+    if args.mimic_subset:
+        # MIMIC-IV-ECG: frozen subset (src/mimic_labels.py) minus records that failed src/mimic_verify.py.
+        # --ptbxl then points at the MIMIC data root (wfdb/ inside it). Report lines are joined with ". ".
+        sub = pd.read_csv(args.mimic_subset)
+        bad_f = Path(args.mimic_subset).with_name("mimic_unavailable.csv")
+        if bad_f.exists():
+            sub = sub[~sub.study_id.isin(pd.read_csv(bad_f).study_id)]
+        df = pd.DataFrame({"patient_id": sub.subject_id.values,
+                           "filename_hr": ["wfdb/" + str(s) for s in sub.study_id],
+                           "report": [". ".join(l.rstrip(". ") for l in str(r).split("\n")) for r in sub.report],
+                           "split": sub.split.values}, index=pd.Index(sub.study_id.values, name="study_id"))
+    else:
+        df = make_splits(load_metadata(args.ptbxl))
     if args.limit:
         df = df.groupby("split", group_keys=False).head(args.limit)
     df[["patient_id", "filename_hr", "report", "split"]].to_csv(out / "split.csv")
