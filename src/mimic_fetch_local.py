@@ -33,11 +33,19 @@ def fetch_drive(src, dst):
     os.replace(tmp, dst)
 
 
-def fetch_web(url, dst):
+def fetch_web(url, dst, attempts=5):
+    """PhysioNet rejects some requests under load: retry with exponential backoff."""
     tmp = dst.with_suffix(dst.suffix + ".part")
-    with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
-        f.write(r.read())
-    os.replace(tmp, dst)
+    for k in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
+                f.write(r.read())
+            os.replace(tmp, dst)
+            return
+        except Exception:  # noqa: BLE001
+            if k == attempts - 1:
+                raise
+            time.sleep(2 ** k + 1)
 
 
 def main():
@@ -75,9 +83,11 @@ def main():
             if done[0] % 1000 == 0:
                 print(f"{done[0]}/{len(jobs)} files, {time.time() - t0:.0f}s, failed {len(failed)}", flush=True)
 
+    if not drive.exists():  # no Drive copy: every record comes from PhysioNet, with fewer parallel requests
+        jobs = [(False,) + j[1:] for j in jobs]
     drive_jobs = [j for j in jobs if j[0]]
     web_jobs = [j for j in jobs if not j[0]]
-    with ThreadPoolExecutor(8) as pd_, ThreadPoolExecutor(16) as pw:
+    with ThreadPoolExecutor(8) as pd_, ThreadPoolExecutor(12) as pw:
         fs = [pd_.submit(work, j) for j in drive_jobs] + [pw.submit(work, j) for j in web_jobs]
         for f in fs:
             f.result()
