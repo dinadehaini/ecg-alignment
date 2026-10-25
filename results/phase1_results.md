@@ -493,3 +493,51 @@ diagnostic probe scores. Text centering substantially improves report-based read
 shared score component, with additional gains depending on prototype normalization. The probe correlations
 support this but do not establish a causal mechanism, and the supervised probe is not an oracle. Frozen-text
 proximity to training reports does not yet explain the gap.
+
+## MIMIC-IV-ECG replication under the frozen protocol (`PREDICTIONS_MIMIC.md`; `src/mimic_run.py`; Colab T4)
+Full output: `results/mimic/mimic_results.md`. Labels are machine-report-derived (agreement with reported
+findings, not verified diagnoses). Rebuilt labels reproduce the frozen subset md5 (7bf5d7ac...). Waveform
+check (`src/mimic_verify.py`): 20,760 of 21,011 ECGs pass; 251 contain non-finite samples and are dropped,
+not replaced. Analysed split: train 15,807 / validation 994 / test 3,959 ECGs. 0 download failures.
+
+Macro test AUROC over 8 concepts, InfoNCE vs the best of the 8 soft models (soft 1/.2 on the primary readout):
+
+| Readout | InfoNCE raw | Best soft raw | Gap raw | InfoNCE centered | Best soft centered | Gap centered |
+|---|---|---|---|---|---|---|
+| clinical descriptions (primary) | .704 | .754 | .050 | .720 | .761 | .041 |
+| names (secondary) | .719 | .739 | .020 | .715 | .743 | .027 |
+| report-style prompts (secondary, written after viewing the vocabulary) | .746 | .772 | .027 | .778 | .786 | .008 |
+| report prototypes | .774 | .868 | .095 | .855 | .875 | .020 |
+
+Selection (100 val/test patient resamples; diff vs full labeled validation [95%]):
+
+| Readout | Val margin / Procrustes / CKA (picks InfoNCE .98-1.0) | Val R@1 dup-aware | Val labels 25 / 50 / 100 patients |
+|---|---|---|---|
+| clinical, centered (**primary endpoint**) | -.041 [-.050, -.032] | -.001 [-.006, .003] | -.001 / -.001 / .000 |
+| clinical, raw | -.049 [-.062, -.035] | -.001 [-.011, .007] | -.004 / -.001 / -.000 |
+| reports, centered | -.015 [-.026, -.004] | +.001 [-.005, .005] | -.000 / +.001 / .000 |
+| reports, raw | -.094 [-.112, -.076] | -.002 [-.009, .003] | -.005 / -.001 / -.000 |
+
+**Scoring against the frozen predictions**
+1. *Soft advantage larger for hand-written descriptions than for report prototypes:* holds after centering
+   (.041 vs .020); reversed without centering (.050 vs .095), as on PTB-XL, where the uncorrected
+   report-prototype gap was also the larger one.
+2. *Persists after centering and with matched prototype sizes:* holds for the primary family. Size-matched
+   training-report prototypes, centered: gap .022 (k=5, 6 concepts) and .018 (k=10, 3 concepts), below the
+   clinical .041. No interval was computed for the difference of gaps.
+3. *Unseen validation wording does not show a larger gap than seen wording:* holds. Centered gaps, unseen vs
+   seen: .006 vs .034 (k=5), .010 vs .036 (k=10), .019 vs .143 (k=25, ST-T only). Pools are small (e.g. 6
+   unseen AF reports, 0 unseen normal-ECG reports, so normal ECG is not in this comparison).
+4. *Exploratory distance analysis:* not run yet.
+5. *Duplicate-aware retrieval within .01 of full labeled validation:* holds for every readout (mean diffs
+   -.003 to +.001). Exact R@1 does not (-.049 clinical raw). The standard alignment metrics pick InfoNCE in
+   98-100% of resamples and give the regrets above.
+
+**Post-hoc observations (not part of the frozen protocol)**
+- The centered clinical gap is concentrated in two concepts. Normal ECG: InfoNCE drops from .827 raw to .632
+  centered, while soft stays at .850. LVH: .626 vs .747. InfoNCE is ahead on conduction abnormality (.857 vs
+  .830) and sinus tachycardia (.837 vs .765). Without normal ECG, the centered clinical gap is .016 (raw
+  .045), so the primary-endpoint result leans on one concept, where centering hurts InfoNCE.
+- The report-style prompt family, which mimics report wording, nearly closes the gap after centering (.008),
+  in line with the query-source account. It was written after viewing the statement vocabulary, so it is
+  not independent evidence.
