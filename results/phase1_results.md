@@ -520,8 +520,10 @@ Selection (100 val/test patient resamples; diff vs full labeled validation [95%]
 
 **Scoring against the frozen predictions**
 1. *Soft advantage larger for hand-written descriptions than for report prototypes:* holds after centering
-   (.041 vs .020); reversed without centering (.050 vs .095), as on PTB-XL, where the uncorrected
-   report-prototype gap was also the larger one.
+   (.041 vs .020); reversed without centering (.050 vs .095). This differs from PTB-XL, where the
+   uncorrected gap was larger for the hand-written clinical descriptions (.190) than for report prototypes
+   (.121), with the same comparison (InfoNCE vs best soft, mix 1 / soft-tau 0.2). The MIMIC uncorrected
+   report-prototype gap comes mostly from InfoNCE's weak raw report readout (infarct pattern .407, ST-T .583).
 2. *Persists after centering and with matched prototype sizes:* holds for the primary family. Size-matched
    training-report prototypes, centered: gap .022 (k=5, 6 concepts) and .018 (k=10, 3 concepts), below the
    clinical .041. No interval was computed for the difference of gaps.
@@ -541,3 +543,47 @@ Selection (100 val/test patient resamples; diff vs full labeled validation [95%]
 - The report-style prompt family, which mimics report wording, nearly closes the gap after centering (.008),
   in line with the query-source account. It was written after viewing the statement vocabulary, so it is
   not independent evidence.
+
+### MIMIC accounting check (post hoc; `src/mimic_accounting.py`; full output `results/mimic/mimic_accounting.md`)
+InfoNCE vs soft 1/.2 throughout. The frozen table's "best soft" was the max over 8 models per readout, so
+the uncorrected clinical gap here is .042 rather than .050. Centered numbers are identical. Decomposition as
+on PTB-XL: direct = z.t_c - z.mu (shared-score subtraction); pipeline = center each text, normalize,
+average.
+
+Soft - InfoNCE macro gap [95% test-patient bootstrap, 1,000 resamples; range over training seeds 0/1/2]:
+
+| Query | Concepts | Uncorrected | Direct z.mu subtraction | Pipeline (frozen) |
+|---|---|---|---|---|
+| clinical | all 8 | .042 [.028, .057]; .038-.055 | .027 [.017, .037]; .017-.029 | .041 [.032, .050]; .028-.041 |
+| clinical | excl. normal ECG | .045 [.029, .063]; .041-.059 | .015 [.005, .026]; .005-.019 | .016 [.007, .024]; .007-.019 |
+| reports | all 8 | .088 [.069, .107]; .088-.099 | .038 [.025, .051]; .038-.043 | .014 [.004, .025]; .014-.019 |
+| reports | excl. normal ECG | .103 [.080, .124]; .103-.115 | .046 [.030, .061]; .046-.051 | .018 [.006, .031]; .018-.024 |
+
+Per concept and model, with the shared component (seed-0 heads):
+- InfoNCE carries a normality axis. The offset z.mu alone scores normal ECG at AUROC .894 and every abnormal
+  concept at .17-.42. InfoNCE's clinical class vectors load +.58 (normal) and -.15 to -.53 (abnormal) on
+  unit(mu). Under the soft model the offset is weak and reversed (.19 normal, .54-.59 abnormal), and the
+  loadings are small (-.18 to +.08).
+- Normal ECG, InfoNCE, clinical: .827 uncorrected, .744 after direct subtraction, .632 after the pipeline.
+  Most of the drop (-.11) comes from the normalization step, not from subtracting the shared score. The soft
+  model is unaffected (.848 / .854 / .850).
+- The pipeline-vs-direct difference in the primary gap (.041 vs .027) is entirely normal ECG: excluding it,
+  the two give the same gap (.016 vs .015).
+- Test-sampling uncertainty (CI width about .02) and seed variability (ranges up to .013) are of similar size.
+  Seed 2 gives the smallest clinical gaps (pipeline .028 all, .007 excluding normal ECG).
+
+Excluded ECGs (all for non-finite samples): train 198 / validation 7 / test 46 (1.2%). They are somewhat
+more often abnormal than the analysed ECGs: AF .153 vs .092, infarct pattern .144 vs .100, conduction
+abnormality .211 vs .172, ST-T .442 vs .380, normal ECG .137 vs .167. 46 of 4,005 test ECGs are affected.
+
+**Reading (answering the reviewer's question):** on MIMIC, the evidence favors the second explanation.
+- InfoNCE adds a shared normality-related score to every hand-written class score. Removing it (either way)
+  leaves a soft advantage on the seven abnormal concepts of .015-.016, with seeds ranging .005-.019.
+- That is the same size as the corrected report-prototype gap (.014-.018). So, excluding normal ECG, the
+  hand-written vs report difference that prediction 1 depends on disappears.
+- The primary endpoint's excess (.041 overall) comes from normal ECG, where the frozen pipeline's
+  per-report normalization hurts InfoNCE.
+- A small soft-target advantage remains for both query types after correction. It is reliably above zero on
+  the seed-0 test bootstrap, but its size varies with seed.
+- On PTB-XL the residual was larger (.07-.10) and concentrated in MI, so the two datasets disagree on
+  whether hand-written queries carry a residual beyond report prototypes.
