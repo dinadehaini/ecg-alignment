@@ -587,3 +587,7 @@ abnormality .211 vs .172, ST-T .442 vs .380, normal ECG .137 vs .167. 46 of 4,00
   the seed-0 test bootstrap, but its size varies with seed.
 - On PTB-XL the residual was larger (.07-.10) and concentrated in MI, so the two datasets disagree on
   whether hand-written queries carry a residual beyond report prototypes.
+
+**Status: MIMIC experiment closed (2026-10-26).** Conclusion: MIMIC's larger hand-written-query gap is
+concentrated in normal ECG and depends on the scoring pipeline; a broader query-source advantage for
+hand-written queries did not replicate convincingly. No further reruns planned.
